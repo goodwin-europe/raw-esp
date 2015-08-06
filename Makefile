@@ -18,7 +18,8 @@ BUILD_BASE	= build
 FW_BASE		= firmware
 
 # base directory of the ESP8266 SDK package, absolute
-SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.2.0
+SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v0.9.5
+# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.2.0
 
 # esptool.py path and port
 ESPTOOL		?= esptool.py
@@ -27,8 +28,9 @@ ESPPORT		?= /dev/ttyUSB0
 # name for the target project
 TARGET		= raw_ip
 
+
 # which modules (subdirectories) of the project to include in compiling
-MODULES		= user_main driver
+MODULES		= user_main driver # lwip/api lwip/core lwip/core/ipv4 lwip/netif
 EXTRA_INCDIR    = include
 
 # libraries used in this project, mainly provided by the SDK
@@ -36,7 +38,7 @@ LIBS		= c gcc hal pp phy net80211 wpa main lwip
 
 # compiler flags using during compilation of source files
 # CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Werror=implicit-function-declaration -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
-CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
+CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH -DLWIP_OPEN_SRC
 
 # linker flags used to generate the main object file
 LDFLAGS		= -nostdlib -Wl,--no-check-sections -u call_user_start -Wl,-static

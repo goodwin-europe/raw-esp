@@ -13,7 +13,7 @@
 #
 ifndef PDIR
 UP_EXTRACT_DIR = ..
-GEN_LIBS = liblwip.a
+GEN_LIBS = liblwip_oss.a
 COMPONENTS_liblwip = api/liblwipapi.a	\
 						app/liblwipapp.a	\
 						core/liblwipcore.a	\

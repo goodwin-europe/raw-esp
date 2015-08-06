@@ -48,7 +48,6 @@ uart_config(uint8 uart_no)
 
         /* PD CTS for it to work w/o external connections. Doesn't work in practice. */
         PIN_PULLUP_DIS(PERIPHS_IO_MUX_MTCK_U);
-        PIN_PULLDWN_EN(PERIPHS_IO_MUX_MTCK_U);
         PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTCK_U, 4);
     }
 

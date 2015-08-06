@@ -8,8 +8,6 @@
  * Modification history:
  *     2014/1/1, v1.0 create this file.
 *******************************************************************************/
-#define LWIP_OPEN_SRC 1
-
 #include "user_interface.h"
 
 #include "ets_sys.h"
@@ -39,18 +37,27 @@ static uint8_t forward_ip_broadcasts = 1;
 void user_rf_pre_init() {
 }
 
-void task_lua(os_event_t *e){
-	COMM_DBG("task: Heap size::%d.\n", system_get_free_heap_size());
-	asm("WAITI 0"); // power consumption doesn't change
-	/* os_delay_us(1*1000);   // delay 50ms before init uart */
-	system_os_post(USER_TASK_PRIO_0, SIG_LUA, 's');
-}
+/* void ICACHE_FLASH_ATTR dhcps_start(struct ip_info *info) { */
+/* } */
+/* void ICACHE_FLASH_ATTR dhcps_stop(void) { */
+/* } */
+/* void ICACHE_FLASH_ATTR dhcps_coarse_tmr(void) { */
+/* } */
+/* void ICACHE_FLASH_ATTR espconn_init(void) { */
+/* } */
 
-void task_init(void){
-	taskQueue = (os_event_t *)os_malloc(sizeof(os_event_t) * TASK_QUEUE_LEN);
-	system_os_task(task_lua, USER_TASK_PRIO_0, taskQueue, TASK_QUEUE_LEN);
-	system_os_post(USER_TASK_PRIO_0, SIG_LUA, 's');
-}
+/* void task_lua(os_event_t *e){ */
+/* 	COMM_DBG("task: Heap size::%d.\n", system_get_free_heap_size()); */
+/* 	asm("WAITI 0"); // power consumption doesn't change */
+/* 	/\* os_delay_us(1*1000);   // delay 50ms before init uart *\/ */
+/* 	system_os_post(USER_TASK_PRIO_0, SIG_LUA, 's'); */
+/* } */
+
+/* void task_init(void){ */
+/* 	taskQueue = (os_event_t *)os_malloc(sizeof(os_event_t) * TASK_QUEUE_LEN); */
+/* 	system_os_task(task_lua, USER_TASK_PRIO_0, taskQueue, TASK_QUEUE_LEN); */
+/* 	system_os_post(USER_TASK_PRIO_0, SIG_LUA, 's'); */
+/* } */
 
 u8_t raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *addr)
 {
@@ -62,6 +69,7 @@ u8_t raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *ad
 	/* COMM_INFO("IRQ level (raw_receiver): %d", (int)ps); */
 
 	COMM_DBG("WLan packet of size %d", p0->tot_len);
+
 	if (pbuf_copy_partial(p0, &hdr, sizeof(hdr), 0) != sizeof(hdr)) {
 //	if (pbuf_take(p0, &hdr, sizeof(hdr)) != ERR_OK) {
 		COMM_WARN("WLan packet of size %d has incomplete header",
@@ -107,22 +115,22 @@ void init_wlan() {
 	struct station_config config;
 	struct ip_info ip;
 
-	/* wifi_set_phy_mode(PHY_MODE_11N); */
-	/* wifi_set_sleep_type(LIGHT_SLEEP_T); */
+	wifi_set_phy_mode(PHY_MODE_11N);
+	wifi_set_sleep_type(LIGHT_SLEEP_T);
 	wifi_set_opmode(STATION_MODE);
 
-	os_sprintf((char *)&config.ssid, "g2test");
-	os_sprintf((char *)&config.password, "H8SBsSO2h37");
-	wifi_station_set_config(&config);
+	/* os_sprintf((char *)&config.ssid, "g2test"); */
+	/* os_sprintf((char *)&config.password, "H8SBsSO2h37"); */
+	/* wifi_station_set_config(&config); */
 
-	IP4_ADDR(&ip.ip, 10, 66, 0, 10);
-	IP4_ADDR(&ip.gw, 10, 66, 0, 1);
-	IP4_ADDR(&ip.netmask, 255, 255, 255, 0);
-	wifi_set_ip_info(STATION_IF, &ip);
+	/* IP4_ADDR(&ip.ip, 10, 66, 0, 10); */
+	/* IP4_ADDR(&ip.gw, 10, 66, 0, 1); */
+	/* IP4_ADDR(&ip.netmask, 255, 255, 255, 0); */
+	/* wifi_set_ip_info(STATION_IF, &ip); */
 
-	wifi_station_dhcpc_stop();
-	wifi_station_connect();
-	wifi_station_dhcpc_stop();
+	/* wifi_station_dhcpc_stop(); */
+	/* wifi_station_connect(); */
+	/* wifi_station_dhcpc_stop(); */
 
 	raw_pcb_tcp = raw_new(6);
 	raw_pcb_udp = raw_new(17);
@@ -248,7 +256,7 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 
 	switch(type) {
 	case MSG_IP_PACKET:
-		COMM_DBG("Packet of size %d", n);
+		COMM_DBG("Packet from host, %d bytes", n);
 		inject_packet(data, n);
 		break;
 	case MSG_SET_STATIC_IP_CONF: {
@@ -475,13 +483,14 @@ void user_init(void)
 	os_delay_us(50*1000);   // delay 50ms before init uart
 
 	uart_init(BIT_RATE_921600, BIT_RATE_921600);
-	/* uart_config(UART0); */
 	comm_init(packet_from_host);
 
 	comm_send_begin(MSG_BOOT);
 	comm_send_end();
 
-	COMM_INFO("Heap size: %d",system_get_free_heap_size());
+	/* lwip_init(); */
+
+	COMM_INFO("Heap size: %d", system_get_free_heap_size());
 	COMM_INFO("Alignment: %d", __BIGGEST_ALIGNMENT__);
 
 	asm("RSR %0, PS" : "=r"(ps));
@@ -496,6 +505,5 @@ void user_init(void)
 	COMM_INFO("IRQ level (unlock): %d", (int)ps);
 
 	/* task_init(); */
-	/* init_wlan(); */
-
+	init_wlan();
 }
