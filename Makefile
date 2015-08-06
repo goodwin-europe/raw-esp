@@ -18,7 +18,7 @@ BUILD_BASE	= build
 FW_BASE		= firmware
 
 # base directory of the ESP8266 SDK package, absolute
-SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v0.9.5
+SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.2.0
 
 # esptool.py path and port
 ESPTOOL		?= esptool.py
@@ -35,6 +35,7 @@ EXTRA_INCDIR    = include
 LIBS		= c gcc hal pp phy net80211 wpa main lwip
 
 # compiler flags using during compilation of source files
+# CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Werror=implicit-function-declaration -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
 CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
 
 # linker flags used to generate the main object file

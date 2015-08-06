@@ -16,6 +16,7 @@
 #include "osapi.h"
 #include "driver/uart.h"
 #include "mem.h"
+#include "missing_declarations.h"
 
 #include "lwip/ip_addr.h"
 #include "lwip/raw.h"
@@ -35,8 +36,11 @@ os_event_t *taskQueue;
 
 static uint8_t forward_ip_broadcasts = 1;
 
+void user_rf_pre_init() {
+}
+
 void task_lua(os_event_t *e){
-	COMM_DBG(10, "task: Heap size::%d.\n", system_get_free_heap_size());
+	COMM_DBG("task: Heap size::%d.\n", system_get_free_heap_size());
 	asm("WAITI 0"); // power consumption doesn't change
 	/* os_delay_us(1*1000);   // delay 50ms before init uart */
 	system_os_post(USER_TASK_PRIO_0, SIG_LUA, 's');
@@ -107,8 +111,8 @@ void init_wlan() {
 	/* wifi_set_sleep_type(LIGHT_SLEEP_T); */
 	wifi_set_opmode(STATION_MODE);
 
-	os_sprintf(&config.ssid, "g2test");
-	os_sprintf(&config.password, "H8SBsSO2h37");
+	os_sprintf((char *)&config.ssid, "g2test");
+	os_sprintf((char *)&config.password, "H8SBsSO2h37");
 	wifi_station_set_config(&config);
 
 	IP4_ADDR(&ip.ip, 10, 66, 0, 10);
@@ -483,15 +487,15 @@ void user_init(void)
 	asm("RSR %0, PS" : "=r"(ps));
 	COMM_INFO("IRQ level: %d", (int)ps);
 
-	os_intr_lock();
+	/* os_intr_lock(); */
 	asm("RSR %0, PS" : "=r"(ps));
 	COMM_INFO("IRQ level (lock): %d", (int)ps);
 
-	os_intr_unlock();
+	/* os_intr_unlock(); */
 	asm("RSR %0, PS" : "=r"(ps));
 	COMM_INFO("IRQ level (unlock): %d", (int)ps);
 
 	/* task_init(); */
-	init_wlan();
+	/* init_wlan(); */
 
 }
