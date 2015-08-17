@@ -30,7 +30,8 @@ below.
 #define MESSAGE_H
 
 /* Includes command_id byte, actual data and CRC */
-#define MAX_MESSAGE_SIZE 1604
+// #define MAX_MESSAGE_SIZE 1604
+#define MAX_MESSAGE_SIZE 2040
 
 
 enum command_type {
