@@ -342,11 +342,15 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 				 sizeof(conf.password) - 1);
 			return;
 		}
+
+		conf.bssid_set = 0;
+		memset(conf.ssid, 0, sizeof(conf.ssid));
+		memset(conf.bssid, 0, sizeof(conf.bssid));
+		memset(conf.password, 0, sizeof(conf.password));
+
 		memcpy(conf.ssid, in_conf->ssid, in_conf->ssid_len);
 		memcpy(conf.password, in_conf->password, in_conf->password_len);
-		conf.ssid[in_conf->ssid_len] = '\0';
-		conf.password[in_conf->password_len] = '\0';
-		conf.bssid_set = 0;
+
 		if (!wifi_station_set_config(&conf)) {
 			comm_send_status(255);
 			COMM_ERR("Call to set WIFI ssid/pass failed");
