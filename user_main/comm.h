@@ -23,7 +23,7 @@ extern uint8_t comm_loglevel;
 
 void comm_set_loglevel(uint8_t level);
 
-#define PRINT_BUF_SIZE 64
+#define PRINT_BUF_SIZE 128
 #define COMM_LOG(level, ...) do {		   \
 	if (level >= comm_loglevel) { \
 		unsigned char __print_buf[PRINT_BUF_SIZE]; \
