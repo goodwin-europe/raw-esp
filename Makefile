@@ -20,10 +20,10 @@ FW_BASE		= firmware
 # base directory of the ESP8266 SDK package, absolute
 # SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v0.9.5# stable
 # SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.0.1# stable
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.1.0# stable
+SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.1.0# stable
 # SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.1.1# works with liblwip_536
 # SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.2.0
-SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.3.0
+# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.3.0
 
 # esptool.py path and port
 ESPTOOL		?= esptool.py

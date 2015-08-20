@@ -117,7 +117,7 @@ void init_wlan() {
 
 	wifi_set_phy_mode(PHY_MODE_11N);
 	wifi_set_sleep_type(LIGHT_SLEEP_T);
-	wifi_set_opmode(STATION_MODE);
+	/* wifi_set_opmode(STATION_MODE); */
 
 	/* os_sprintf((char *)&config.ssid, "g2test"); */
 	/* os_sprintf((char *)&config.password, "H8SBsSO2h37"); */
@@ -131,6 +131,9 @@ void init_wlan() {
 	/* wifi_station_dhcpc_stop(); */
 	/* wifi_station_connect(); */
 	/* wifi_station_dhcpc_stop(); */
+
+	/* esp_now_unregister_recv_cb(); */
+	/* esp_now_unregister_send_cb(); */
 
 	raw_pcb_tcp = raw_new(6);
 	raw_pcb_udp = raw_new(17);
@@ -200,8 +203,8 @@ scan_done(void *arg, STATUS status)
 {
 	struct bss_info *bss_link = (void *) arg;
 	struct bss_info *bss_iter = bss_link;
-	struct msg_scan_reply r;
-	struct msg_scan_entry e;
+	struct msg_wifi_scan_reply r;
+	struct msg_wifi_scan_entry e;
 	int bss_len;
 	int i;
 
@@ -218,7 +221,7 @@ scan_done(void *arg, STATUS status)
 			bss_iter = bss_iter->next.stqe_next;
 		}
 	}
-	comm_send_begin(MSG_SCAN_REPLY);
+	comm_send_begin(MSG_WIFI_SCAN_REPLY);
 	comm_send_data((void *) &r, sizeof(r));
 	comm_send_end();
 	if (r.status) {
@@ -240,12 +243,19 @@ scan_done(void *arg, STATUS status)
 		e.is_hidden = bss_iter->is_hidden;
 		bss_iter = bss_iter->next.stqe_next;
 
-		comm_send_begin(MSG_SCAN_ENTRY);
+		comm_send_begin(MSG_WIFI_SCAN_ENTRY);
 		comm_send_data((void *) &e, sizeof(e));
 		comm_send_end();
 	}
 }
 
+#define TRY(expr, message) \
+	if (expr) { \
+		comm_send_status(255); \
+		COMM_ERR(message); \
+		return; \
+	}
+	
 static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 {
 	/* COMM_DBG("Got packet from host: type=%d, payload_len=%d", */
@@ -259,16 +269,44 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		COMM_DBG("Packet from host, %d bytes", n);
 		inject_packet(data, n);
 		break;
-	case MSG_SET_STATIC_IP_CONF: {
+	case MSG_WIFI_MODE_SET: {
+		int mode = 0;
+		if (n != 1) {
+			comm_send_status(255);
+			COMM_ERR("Wrong size of DHCPC payload: %d", n);
+			return;
+		}
+		switch (data[0]) {
+		case 0:
+			mode = NULL_MODE; break;
+		case MODE_STA:
+			mode = STATION_MODE; break;
+		case MODE_SOFTAP:
+			mode = SOFTAP_MODE; break;
+		case (MODE_STA | MODE_SOFTAP):
+			mode = STATIONAP_MODE; break;
+		}
+
+		TRY(!wifi_set_opmode(mode), "wifi_set_opmode() failed");
+		break;
+	}
+	case MSG_STATION_STATIC_IP_CONF_SET: {
 		struct msg_ip_conf *conf = (void *) data;
 		struct ip_info info;
+
+		if (!(wifi_get_opmode() & STATION_MODE)) {
+			comm_send_status(255);
+			COMM_ERR("Cannot set STA IP while STA is inactive");
+			return;
+		}
+
 		if (n != sizeof(*conf)) {
 			comm_send_status(255);
 			COMM_ERR("Wrong size of STATIC_IP_CONF payload: %d", n);
 			return;
 		}
 
-		if(wifi_station_dhcpc_status() == DHCP_STARTED) {
+		if (wifi_station_dhcpc_status() == DHCP_STARTED) {
 			if (!wifi_station_dhcpc_stop()) {
 				comm_send_status(255);
 				COMM_ERR("Unable to stop DHCPC");
@@ -276,19 +314,18 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 			}
 		}
 
-		// TODO: check endianess
 		info.ip.addr = conf->address;
 		info.netmask.addr = conf->netmask;
 		info.gw.addr = conf->gateway;
 		if (!wifi_set_ip_info(STATION_IF, &info)) {
 			comm_send_status(255);
-			COMM_ERR("Unable to set IP info");
+			COMM_ERR("wifi_set_ip_info() failed");
 			return;
 		}
 		comm_send_status(0);
 		break;
 	}
-	case MSG_DHCPC: {
+	case MSG_STATION_DHCPC_STATE_SET: {
 		int ret;
 		if (n != 1) {
 			comm_send_status(255);
@@ -307,7 +344,7 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		comm_send_status(0);
 		break;
 	}
-	case MSG_GET_IP_CONF_REQUEST: {
+	case MSG_STATION_IP_CONF_REQUEST: {
 		struct msg_ip_conf conf;
 		struct ip_info info;
 		if (!wifi_get_ip_info(STATION_IF, &info)) {
@@ -318,12 +355,12 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		conf.address = info.ip.addr;
 		conf.netmask = info.netmask.addr;
 		conf.gateway = info.gw.addr;
-		comm_send_begin(MSG_GET_IP_CONF_REPLY);
+		comm_send_begin(MSG_STATION_IP_CONF_REPLY);
 		comm_send_data((void *)&conf, sizeof(conf));
 		comm_send_end();
 		break;
 	}
-	case MSG_SET_STATION_CONF: {
+	case MSG_STATION_CONF_SET: {
 		struct msg_station_conf *in_conf = (void *)data;
 		struct station_config conf;
 		if (n != sizeof(*in_conf)) {
@@ -351,7 +388,14 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		memcpy(conf.ssid, in_conf->ssid, in_conf->ssid_len);
 		memcpy(conf.password, in_conf->password, in_conf->password_len);
 
-		if (!wifi_station_set_config(&conf)) {
+		if ((wifi_get_opmode() & STATION_MODE)) {
+			comm_send_status(255);
+			COMM_ERR("Cannot set STA conf when not in STA mode");
+			return;
+			
+		}
+
+		if (!wifi_station_set_config_current(&conf)) {
 			comm_send_status(255);
 			COMM_ERR("Call to set WIFI ssid/pass failed");
 			return;
@@ -361,7 +405,7 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		comm_send_status(0);
 		break;
 	}
-	case MSG_SET_SLEEP_MODE: {
+	case MSG_WIFI_SLEEP_MODE_SET: {
 		int mode;
 		if (n != 1) {
 			comm_send_status(255);
@@ -385,8 +429,8 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		comm_send_status(0);
 		break;
 	}
-	case MSG_SCAN_REQUEST: {
-		struct msg_scan_request *r = (void *) data;
+	case MSG_WIFI_SCAN_REQUEST: {
+		struct msg_wifi_scan_request *r = (void *) data;
 		struct scan_config config;
 		uint8_t ssid_buf[33];
 		if (n != sizeof(*r)) {
@@ -416,7 +460,7 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		comm_send_status(0);
 		break;
 	}
-	case MSG_CONN_STATUS_REQUEST: {
+	case MSG_STATION_CONN_STATUS_REQUEST: {
 		uint8_t out;
 		switch (wifi_station_get_connect_status()) {
 		case STATION_IDLE:
@@ -434,7 +478,7 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		default:
 			out = 0xff; break;
 		}
-		comm_send_begin(MSG_CONN_STATUS_REPLY);
+		comm_send_begin(MSG_STATION_CONN_STATUS_REPLY);
 		comm_send_u8(out);
 		comm_send_end();
 		break;
@@ -450,7 +494,116 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		comm_send_status(0);
 		break;
 	}
-	case MSG_SET_LOG_LEVEL: {
+	case MSG_SOFTAP_CONF_SET: {
+		struct msg_softap_conf *in_conf = (void *)data;
+		struct softap_config conf;
+		if (n != sizeof(*in_conf)) {
+			comm_send_status(255);
+			COMM_ERR("Wrong size of SOFTAP_CONF payload: %d", n);
+			return;
+		}
+		// It seems Espressif are using zero-terminated fields
+		// What happens if ssid/pw contain \0 or are at max allowed
+		// length? Let's validate at least overflow for now.
+		if ((in_conf->ssid_len + 1 > sizeof(conf.ssid)) ||
+		    (in_conf->password_len + 1 > sizeof(conf.password))) {
+			comm_send_status(255);
+			COMM_ERR("SSID or password are too long, should be max"
+				 " %d and %d", sizeof(conf.ssid) - 1,
+				 sizeof(conf.password) - 1);
+			return;
+		}
+
+		memset(conf.ssid, 0, sizeof(conf.ssid));
+		memcpy(conf.ssid, in_conf->ssid, in_conf->ssid_len);
+		memset(conf.password, 0, sizeof(conf.password));
+		memcpy(conf.password, in_conf->password, in_conf->password_len);
+		conf.ssid_len = in_conf->ssid_len;
+		conf.channel = in_conf->channel;
+		conf.authmode = in_conf->auth_mode; // check
+		conf.ssid_hidden = 0;
+		conf.max_connection = 4; // is this current maximum?
+		conf.beacon_interval = in_conf->beacon_interval;
+
+		COMM_INFO("Conf: ssid_len=%d, ssid=%s pass=%s chan=%d auth=%d int=%d",
+			  conf.ssid_len, conf.ssid, conf.password, conf.channel,
+			  conf.authmode, conf.beacon_interval
+			);
+
+		if (wifi_get_opmode() != SOFTAP_MODE) {
+			if(!wifi_set_opmode(SOFTAP_MODE)) {
+				comm_send_status(255);
+				COMM_ERR("Cannot switch to SoftAP mode");
+			}
+		}
+		COMM_INFO("SoftAP mode on");
+
+		if (!wifi_softap_set_config(&conf)) {
+			comm_send_status(255);
+			COMM_ERR("Call to set WIFI ssid/pass failed");
+			return;
+		}
+		comm_send_status(0);
+		break;
+	}
+	case MSG_SOFTAP_NET_CONF_SET: {
+		struct msg_softap_net_conf *conf = (void *) data;
+		struct ip_info info;
+		struct dhcps_lease leases;
+		/* int dhcp_status; */
+		if (n != sizeof(*conf)) {
+			comm_send_status(255);
+			COMM_ERR("Wrong size of STATION_STATIC_IP_CONF "
+				 "payload: %d", n);
+			return;
+		}
+
+		info.ip.addr = conf->address;
+		info.netmask.addr = conf->netmask;
+		info.gw.addr = conf->gateway;
+
+		if ((wifi_softap_dhcps_status() == DHCP_STARTED) &&
+		    (!wifi_softap_dhcps_stop())) {
+			comm_send_status(255);
+			COMM_ERR("wifi_softap_dhcps_stop() failed");
+			return;
+		}
+
+		if (!wifi_set_ip_info(SOFTAP_IF, &info)) {
+			comm_send_status(255);
+			COMM_ERR("wifi_set_ip_info() failed");
+			return;
+		}
+
+		if (conf->enable_dhcpd) {
+			leases.start_ip.addr = conf->dhcpd_first_ip;
+			leases.end_ip.addr = conf->dhcpd_last_ip;
+			if (!wifi_softap_set_dhcps_lease(&leases)) {
+				comm_send_status(255);
+				COMM_ERR("wifi_softap_set_dhcps_lease() failed");
+				return;
+			}
+
+			/* not sure about types, so specify them explicitly */
+			uint8_t omode = conf->dhcpd_offer_gateway;
+			if (conf->dhcpd_offer_gateway &&
+			    wifi_softap_set_dhcps_offer_option(OFFER_ROUTER,
+							       &omode)) {
+				comm_send_status(255);
+				COMM_ERR("wifi_softap_set_dhcps_lease() failed");
+				return;
+			}
+
+			if (!wifi_softap_dhcps_start()) {
+				comm_send_status(255);
+				COMM_ERR("wifi_softap_dhcps_start() failed");
+				return;
+			}
+		}
+		comm_send_status(0);
+		break;
+	}
+	case MSG_LOG_LEVEL_SET: {
 		if (n != 1) {
 			comm_send_status(255);
 			COMM_ERR("Wrong size of Set Loglevel payload: %d", n);
