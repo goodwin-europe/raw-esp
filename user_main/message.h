@@ -24,13 +24,17 @@ direction, e. g. WiFi configuration requests make sense only when
 sent to ESP8266. Some messages have no payload, some include
 structs, some contain variable-sized data. Commands are fully desribed
 below.
+
+Baud rate is currently set to 2MHz in user_main.c/user_init(). It's
+derived from APB's 80MHz by a simple divider. ESP8266 I/O may have 20MHz limit,
+but I managed to get working only 2MHz with FT232BM and 20cm cable.
+Someone on internet says 3MHz works with FT2232C.
 */
 
 #ifndef MESSAGE_H
 #define MESSAGE_H
 
 /* Includes command_id byte, actual data and CRC */
-// #define MAX_MESSAGE_SIZE 1604
 #define MAX_MESSAGE_SIZE 2040
 
 

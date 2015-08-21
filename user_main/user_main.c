@@ -564,7 +564,8 @@ user_init(void)
 	uint32_t ps=999;
 	os_delay_us(50*1000);   // delay 50ms before init uart
 
-	uart_init(BIT_RATE_921600, BIT_RATE_921600);
+	//uart_init(BIT_RATE_921600, BIT_RATE_921600);
+	uart_init(2000000, 2000000);
 	comm_init(packet_from_host);
 
 	comm_send_begin(MSG_BOOT);
