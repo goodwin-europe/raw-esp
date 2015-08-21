@@ -70,7 +70,8 @@ static inline void irq_restore(uint32_t level)
 static uint32_t irq_level;
 
 /* FIXME! */
-void comm_send_begin(uint8_t c) {
+void ICACHE_FLASH_ATTR
+comm_send_begin(uint8_t c) {
 	//ETS_INTR_LOCK();
 	/* os_intr_lock(); */
 	irq_level = irq_save();
@@ -78,7 +79,8 @@ void comm_send_begin(uint8_t c) {
 	comm_send_u8(c);
 }
 
-void comm_send_end()
+void ICACHE_FLASH_ATTR
+comm_send_end()
 {
 	uint16_t crc = enc_uart0.crc;
 	comm_send_data((void *)&crc, sizeof(crc));
@@ -89,7 +91,8 @@ void comm_send_end()
 	/* ets_intr_unlock(); */
 }
 
-void comm_send_u8(uint8_t c) {
+void ICACHE_FLASH_ATTR
+comm_send_u8(uint8_t c) {
 	if ((c == FRAME_END) || (c == FRAME_ESC)) {
 		uart_tx_one_char(UART0, FRAME_ESC);
 		uart_tx_one_char(UART0, c ^ FRAME_XOR);
@@ -99,13 +102,15 @@ void comm_send_u8(uint8_t c) {
 	crc16_ccitt_update(&enc_uart0.crc, c);
 }
 
-void comm_send_data(uint8_t *data, int n)
+void ICACHE_FLASH_ATTR
+comm_send_data(uint8_t *data, int n)
 {
 	for (; n > 0; n--)
 		comm_send_u8(*(data++));
 }
 
-void comm_send_status(uint8_t s)
+void ICACHE_FLASH_ATTR
+comm_send_status(uint8_t s)
 {
 	comm_send_begin(MSG_STATUS);
 	comm_send_u8(s);
@@ -113,7 +118,8 @@ void comm_send_status(uint8_t s)
 }
 /* ------------------------------------------------------------------ receive */
 
-static inline void check_and_dispatch(struct decoder *d)
+static inline void ICACHE_FLASH_ATTR
+check_and_dispatch(struct decoder *d)
 {
 	uint16_t crc_msg;
 	uint16_t crc_calc;
@@ -145,14 +151,16 @@ static inline void check_and_dispatch(struct decoder *d)
 		      d->pos - BUF_ALIGN_OFFSET - 3);
 }
 
-static inline void add_char(struct decoder *d, uint8_t c) {
+static inline void ICACHE_FLASH_ATTR
+add_char(struct decoder *d, uint8_t c) {
 	if (d->pos >= sizeof(d->buf))
 		d->err = 1;
 	else
 		d->buf[d->pos++] = c;
 }
 
-static inline void comm_rx_char(struct decoder *d, uint8_t c)
+static inline void ICACHE_FLASH_ATTR
+comm_rx_char(struct decoder *d, uint8_t c)
 {
 	if (d->in_escape) {
 		add_char(d, c ^= FRAME_XOR);
@@ -194,17 +202,20 @@ void uart0_rx_intr_handler(void *para)
 /* ------------------------------------------------------------------ misc */
 
 uint8_t comm_loglevel = 0;
-void comm_set_loglevel(uint8_t level)
+void ICACHE_FLASH_ATTR
+comm_set_loglevel(uint8_t level)
 {
 	comm_loglevel = level;
 }
 
-void comm_get_stats(uint32_t *rx_errors, uint32_t *rx_crc_errors) {
+void ICACHE_FLASH_ATTR
+comm_get_stats(uint32_t *rx_errors, uint32_t *rx_crc_errors) {
 	*rx_errors = dec_uart0.total_errors;
 	*rx_crc_errors = dec_uart0.crc_errors;
 }
 
-void comm_init(comm_callback_t cb) {
+void ICACHE_FLASH_ATTR
+comm_init(comm_callback_t cb) {
 	dec_uart0.cb = cb;
 	uart_tx_one_char(UART0, FRAME_END);
 }

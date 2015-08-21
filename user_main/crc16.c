@@ -64,7 +64,8 @@ const uint16_t crc16_ccitt_tab[256] = {
 	0x6e17,0x7e36,0x4e55,0x5e74,0x2e93,0x3eb2,0x0ed1,0x1ef0
 };
 
-uint16_t crc16_ccitt_block(const uint8_t *buf, int len)
+uint16_t ICACHE_FLASH_ATTR
+crc16_ccitt_block(const uint8_t *buf, int len)
 {
 	uint16_t crc = CRC16_CCITT_INIT_VALUE;
 	int i;

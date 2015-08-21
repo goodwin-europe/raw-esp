@@ -40,7 +40,7 @@ enum command_type {
 	MSG_FORWARD_IP_BROADCASTS  = 0x10,
 
 	/* Basic WIFI messages */
-	MSG_WIFI_MODE_SET         = 0x20, /* TODO */
+	MSG_WIFI_MODE_SET         = 0x20,
 	MSG_WIFI_SLEEP_MODE_SET   = 0x21,
 	MSG_WIFI_SCAN_REQUEST     = 0x22,
 	MSG_WIFI_SCAN_REPLY       = 0x23,
@@ -48,14 +48,14 @@ enum command_type {
 
 	/* STA related */
 	MSG_STATION_CONF_SET             = 0x40,
-	MSG_STATION_SIGNAL_LEVEL_REQUEST = 0x41, /* TODO */
-	MSG_STATION_SIGNAL_LEVEL_REPLY   = 0x42, /* TODO */
-	MSG_STATION_STATIC_IP_CONF_SET   = 0x43,
-	MSG_STATION_DHCPC_STATE_SET      = 0x44,
-	MSG_STATION_IP_CONF_REQUEST      = 0x45,
-	MSG_STATION_IP_CONF_REPLY        = 0x46,
-	MSG_STATION_CONN_STATUS_REQUEST  = 0x47,
-	MSG_STATION_CONN_STATUS_REPLY    = 0x48,
+	MSG_STATION_STATIC_IP_CONF_SET   = 0x41,
+	MSG_STATION_DHCPC_STATE_SET      = 0x42,
+	MSG_STATION_IP_CONF_REQUEST      = 0x43,
+	MSG_STATION_IP_CONF_REPLY        = 0x44,
+	MSG_STATION_CONN_STATUS_REQUEST  = 0x45,
+	MSG_STATION_CONN_STATUS_REPLY    = 0x46,
+	MSG_STATION_RSSI_REQUEST         = 0x47,
+	MSG_STATION_RSSI_REPLY           = 0x48,
 
 	/* SoftAP related */
 	MSG_SOFTAP_CONF_SET           = 0x60,
@@ -63,7 +63,7 @@ enum command_type {
 
 	/* Logging, misc */
 	MSG_STATUS                 = 0x80,
-	MSG_BOOT                   = 0x81,
+	MSG_BOOT                   = 0x81, /* TODO: send boot reason ? */
 	MSG_LOG_LEVEL_SET          = 0x82,
 	MSG_LOG                    = 0x83,
 	MSG_ECHO_REQUEST           = 0x84,
@@ -221,6 +221,18 @@ MSG_STATION_CONN_STATUS_REPLY
     4 -- connect failed,
     5 -- got IP.
 
+MSG_STATION_RSSI_REQUEST
+  dir: from host
+  data: none
+  reply: MSG_STATION_RSSI_REPLY or STATUS with error
+  Request RSSI level of AP that station is connected to.
+
+MSG_STATION_RSSI_REPLY
+  dir: to host
+  data: int8_t status
+  reply: none
+  RSSI level should be negative, otherwise docs lie and value is
+  probably incorrect.
 
 MSG_SOFTAP_CONF_SET
   dir: from host
@@ -355,7 +367,9 @@ struct msg_softap_net_conf {
 	uint32_t netmask;
 	uint32_t gateway;
 	uint8_t  enable_dhcpd;
-	uint8_t  dhcpd_offer_gateway; /* include gateway in DHCP offer */
+	/* Include gateway in DHCP offer.
+           Gateway address is taken from field `gateway` of this struct */
+	uint8_t  dhcpd_offer_gateway;
 	uint32_t dhcpd_first_ip; /* if dhcpd is enabled */
 	uint32_t dhcpd_last_ip; /* if dhcpd is enabled */
 } PACKED;

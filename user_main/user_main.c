@@ -1,5 +1,3 @@
-/* FIXME: prefix everyting with flash_instr or something */
-
 #include "user_interface.h"
 
 #include "ets_sys.h"
@@ -51,7 +49,8 @@ void user_rf_pre_init() {
 /* 	system_os_post(USER_TASK_PRIO_0, SIG_LUA, 's'); */
 /* } */
 
-u8_t raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *addr)
+static u8_t ICACHE_FLASH_ATTR
+raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *addr)
 {
 	struct ip_hdr hdr;
 	struct pbuf *p;
@@ -103,7 +102,8 @@ u8_t raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *ad
 static struct raw_pcb *raw_pcb_tcp = NULL;
 static struct raw_pcb *raw_pcb_udp = NULL;
 
-void init_wlan() {
+static void ICACHE_FLASH_ATTR
+init_wlan() {
 	struct station_config config;
 	struct ip_info ip;
 
@@ -141,7 +141,8 @@ void init_wlan() {
 }
 
 
-static int inject_packet(uint8_t *data, int n)
+static int ICACHE_FLASH_ATTR
+inject_packet(uint8_t *data, int n)
 {
 	struct ip_hdr hdr;
 	ip_addr_t dest;
@@ -253,7 +254,8 @@ scan_done(void *arg, STATUS status)
 	return; \
 } while(0)
 	
-static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
+static void ICACHE_FLASH_ATTR
+packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 {
 	/* COMM_DBG("Got packet from host: type=%d, payload_len=%d", */
 		  /* (int)type, n); */
@@ -283,6 +285,7 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		}
 
 		TRY(!wifi_set_opmode(mode), "wifi_set_opmode() failed");
+		comm_send_status(0);
 		break;
 	}
 	case MSG_STATION_STATIC_IP_CONF_SET: {
@@ -311,12 +314,13 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		int ret;
 		TRY(n != 1, "Wrong size of DHCPC payload: %d", n);
 
-		if (data[0])
+		if (data[0] && (wifi_station_dhcpc_status() == DHCP_STOPPED))
 			TRY(wifi_station_dhcpc_start(),
 			    "wifi_station_dhcpc_start() failed");
-		else
+
+		if ((!data[0]) && (wifi_station_dhcpc_status() == DHCP_STARTED))
 			TRY(wifi_station_dhcpc_stop(),
-			    "wifi_station_dhcpc_start() failed");
+			    "wifi_station_dhcpc_stop() failed");
 
 		comm_send_status(0);
 		break;
@@ -434,6 +438,15 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		comm_send_end();
 		break;
 	}
+	case MSG_STATION_RSSI_REQUEST: {
+		int8_t rssi = wifi_station_get_rssi();
+		if (rssi == 31)
+			FAIL("wifi_station_get_rssi() returned '31'");
+		comm_send_begin(MSG_STATION_RSSI_REPLY);
+		comm_send_u8((uint8_t)rssi);
+		comm_send_end();
+		break;
+	}
 	case MSG_FORWARD_IP_BROADCASTS: {
 		TRY(n != 1, "Wrong size of Forward Ip Broadcasts payload: %d", n);
 		forward_ip_broadcasts = data[0];
@@ -467,10 +480,11 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		conf.max_connection = 4; // is this current maximum?
 		conf.beacon_interval = in_conf->beacon_interval;
 
-		COMM_INFO("Conf: ssid_len=%d, ssid=%s pass=%s chan=%d auth=%d int=%d",
-			  conf.ssid_len, conf.ssid, conf.password, conf.channel,
-			  conf.authmode, conf.beacon_interval
-			);
+		/* COMM_INFO("Conf: ssid_len=%d, ssid=%s pass=%s chan=%d " */
+		/*           "auth=%d int=%d", */
+		/* 	  conf.ssid_len, conf.ssid, conf.password, conf.channel, */
+		/* 	  conf.authmode, conf.beacon_interval */
+		/* ); */
 
 		TRY(!(wifi_get_opmode() & SOFTAP_MODE), // FIXME?
 		    "Cannot switch to SoftAP mode");
@@ -505,10 +519,11 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 
 			/* not sure about types, so specify them explicitly */
 			uint8_t omode = conf->dhcpd_offer_gateway;
-			if (conf->dhcpd_offer_gateway)
-				TRY(wifi_softap_set_dhcps_offer_option(
+			if (conf->dhcpd_offer_gateway) {
+				TRY(!wifi_softap_set_dhcps_offer_option(
 					    OFFER_ROUTER, &omode),
-				"wifi_softap_set_dhcps_lease() failed");
+				"wifi_softap_set_dhcps_offer_option() failed");
+			}
 
 			TRY(!wifi_softap_dhcps_start(),
 			    "wifi_softap_dhcps_start() failed");
@@ -543,7 +558,8 @@ static void packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
  * Parameters   : none
  * Returns      : none
 *******************************************************************************/
-void user_init(void)
+void ICACHE_FLASH_ATTR
+user_init(void)
 {
 	uint32_t ps=999;
 	os_delay_us(50*1000);   // delay 50ms before init uart
