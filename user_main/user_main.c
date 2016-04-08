@@ -548,6 +548,11 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		comm_send_data(data, n);
 		comm_send_end();
 		break;
+	case MSG_SET_BAUD: {
+		uint32_t *baud = (void *) data;
+		uart_div_modify(0, UART_CLK_FREQ / (*baud));
+		break;
+	}
 	default:;
 	}
 }
@@ -564,8 +569,7 @@ user_init(void)
 	uint32_t ps=999;
 	os_delay_us(50*1000);   // delay 50ms before init uart
 
-	//uart_init(BIT_RATE_921600, BIT_RATE_921600);
-	uart_init(2000000, 2000000);
+	uart_init(BIT_RATE_115200, BIT_RATE_115200);
 	comm_init(packet_from_host);
 
 	comm_send_begin(MSG_BOOT);
@@ -576,16 +580,16 @@ user_init(void)
 	COMM_INFO("Heap size: %d", system_get_free_heap_size());
 	COMM_INFO("Alignment: %d", __BIGGEST_ALIGNMENT__);
 
-	asm("RSR %0, PS" : "=r"(ps));
-	COMM_INFO("IRQ level: %d", (int)ps);
+	/* asm("RSR %0, PS" : "=r"(ps)); */
+	/* COMM_INFO("IRQ level: %d", (int)ps); */
 
 	/* os_intr_lock(); */
-	asm("RSR %0, PS" : "=r"(ps));
-	COMM_INFO("IRQ level (lock): %d", (int)ps);
+	/* asm("RSR %0, PS" : "=r"(ps)); */
+	/* COMM_INFO("IRQ level (lock): %d", (int)ps); */
 
 	/* os_intr_unlock(); */
-	asm("RSR %0, PS" : "=r"(ps));
-	COMM_INFO("IRQ level (unlock): %d", (int)ps);
+	/* asm("RSR %0, PS" : "=r"(ps)); */
+	/* COMM_INFO("IRQ level (unlock): %d", (int)ps); */
 
 	/* task_init(); */
 	init_wlan();

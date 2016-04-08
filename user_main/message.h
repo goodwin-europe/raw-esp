@@ -72,6 +72,7 @@ enum command_type {
 	MSG_LOG                    = 0x83,
 	MSG_ECHO_REQUEST           = 0x84,
 	MSG_ECHO_REPLY             = 0x85,
+	MSG_SET_BAUD               = 0x86,
 	MSG_PRINT_STATS            = 0x90,
 };
 
@@ -294,6 +295,14 @@ MSG_ECHO_REPLY
   data: copied from ECHO_REQUEST
   reply: none
   Reply to previously requested echo
+
+MSG_SET_BAUD
+  dir: from host
+  data: uint32_t
+  reply: none
+  Sets baud rate to the specified value immidiately and doesn't reply.
+  APB base frequency is 80.0 MHz and it's divided by integer to derive UART
+  frequency.
 
 MSG_PRINT_STATS
   dir: from host
