@@ -11,6 +11,7 @@
 #include "lwip/udp.h"
 
 #include "comm.h"
+#include "misc.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -333,6 +334,11 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		conf.address = info.ip.addr;
 		conf.netmask = info.netmask.addr;
 		conf.gateway = info.gw.addr;
+
+		size_t i;
+		for (i = 0; i < ARRAY_SIZE(conf.dns); i++) {
+			conf.dns[i] = dns_getserver(i);
+		}
 		comm_send_begin(MSG_STATION_IP_CONF_REPLY);
 		comm_send_data((void *)&conf, sizeof(conf));
 		comm_send_end();

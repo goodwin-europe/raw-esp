@@ -337,6 +337,7 @@ struct msg_ip_conf {
 	uint32_t address;
 	uint32_t netmask;
 	uint32_t gateway;
+	uint32_t dns[3];
 } PACKED;
 
 struct msg_wifi_scan_request {
