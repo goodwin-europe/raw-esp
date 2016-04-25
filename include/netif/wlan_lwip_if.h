@@ -13,7 +13,7 @@ enum {
 	SIG_LWIP_RX = 0, 
 };
 
-struct netif * eagle_lwip_if_alloc(struct ieee80211_conn *conn, const uint8 *macaddr, struct ip_info *info);
+/* struct netif * eagle_lwip_if_alloc(struct ieee80211_conn *conn, const uint8 *macaddr, struct ip_info *info); */
 struct netif * eagle_lwip_getif(uint8 index);
 
 #ifndef IOT_SIP_MODE

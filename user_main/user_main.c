@@ -9,6 +9,7 @@
 #include "lwip/ip_addr.h"
 #include "lwip/raw.h"
 #include "lwip/udp.h"
+#include "netif/wlan_lwip_if.h"
 
 #include "comm.h"
 #include "misc.h"
@@ -24,6 +25,7 @@ os_event_t *taskQueue;
 #define UART1   1
 
 static uint8_t forward_ip_broadcasts = 1;
+static enum forwarding_mode global_forwarding_mode = FORWARDING_MODE_NONE;
 
 void user_rf_pre_init() {
 }
@@ -56,14 +58,11 @@ raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *addr)
 	struct ip_hdr hdr;
 	struct pbuf *p;
 
-	/* uint32_t ps; */
-	/* asm("RSR %0, PS" : "=r"(ps)); */
-	/* COMM_INFO("IRQ level (raw_receiver): %d", (int)ps); */
-
-	COMM_DBG("WLan packet of size %d", p0->tot_len);
+	COMM_DBG("WLan IP packet of size %d", p0->tot_len);
+	if (global_forwarding_mode != FORWARDING_MODE_IP)
+		return 0;
 
 	if (pbuf_copy_partial(p0, &hdr, sizeof(hdr), 0) != sizeof(hdr)) {
-//	if (pbuf_take(p0, &hdr, sizeof(hdr)) != ERR_OK) {
 		COMM_WARN("WLan packet of size %d has incomplete header",
 			  p0->tot_len);
 		return 0;
@@ -102,6 +101,10 @@ raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *addr)
 
 static struct raw_pcb *raw_pcb_tcp = NULL;
 static struct raw_pcb *raw_pcb_udp = NULL;
+
+static volatile netif_input_fn netif_input_orig = NULL;
+static volatile netif_output_fn netif_output_orig = NULL;
+static volatile netif_linkoutput_fn netif_linkoutput_orig = NULL;
 
 static void ICACHE_FLASH_ATTR
 init_wlan() {
@@ -142,8 +145,88 @@ init_wlan() {
 }
 
 
+err_t netif_input_mitm(struct pbuf *p, struct netif *netif)
+{
+	COMM_DBG("mitm input, size=%d", (int)p->tot_len);
+	/* COMM_DBG("**** mitm input, size=%d, %p", */
+	/* 	 p->tot_len, netif_input_orig); */
+
+	if (global_forwarding_mode != FORWARDING_MODE_ETHER) {
+		if (netif_input_orig)
+			return netif_input_orig(p, netif);
+
+		COMM_WARN("mitm input zero pointer");
+		return 0;
+	}
+
+	struct pbuf *tmp;
+	comm_send_begin(MSG_ETHER_PACKET);
+	for(tmp = p; tmp; tmp = tmp->next) {
+		comm_send_data(tmp->payload, tmp->len);
+	}
+	comm_send_end();
+
+	pbuf_free(p);
+	return 0;
+}
+
+err_t netif_output_mitm(struct netif *netif, struct pbuf *p, ip_addr_t *ipaddr)
+{
+	COMM_DBG("mitm output, size=%d", (int)p->tot_len);
+
+	if (global_forwarding_mode == FORWARDING_MODE_ETHER)
+		return 0;
+
+	if (netif_output_orig)
+		return netif_output_orig(netif, p, ipaddr);
+
+	COMM_WARN("mitm output zero pointer");
+	return 0;
+}
+
+err_t netif_linkoutput_mitm(struct netif *netif, struct pbuf *p)
+{
+	COMM_DBG("mitm linkoutput, size=%d", (int)p->tot_len);
+
+	if (global_forwarding_mode == FORWARDING_MODE_ETHER)
+		return 0;
+
+	if (netif_linkoutput_orig)
+		return netif_linkoutput_orig(netif, p);
+
+	COMM_WARN("mitm linkoutput zero pointer");
+	return 0;
+}
+
+static void mitm_interface()
+{
+	struct netif *netif = eagle_lwip_getif(0);
+	if (!netif) {
+		COMM_DBG("********** netif not ready");
+		return;
+	}
+
+	if (netif->input != netif_input_mitm) {
+		COMM_INFO("************** mitm input");
+		netif_input_orig = netif->input;
+		netif->input = netif_input_mitm;
+	}
+
+	if (netif->output != netif_output_mitm) {
+		COMM_INFO("************** mitm output");
+		netif_output_orig = netif->output;
+		netif->output = netif_output_mitm;
+	}
+
+	if (netif->linkoutput != netif_linkoutput_mitm) {
+		COMM_INFO("************** mitm linkoutput");
+		netif_linkoutput_orig = netif->linkoutput;
+		netif->linkoutput = netif_linkoutput_mitm;
+	}
+}
+
 static int ICACHE_FLASH_ATTR
-inject_packet(uint8_t *data, int n)
+inject_ip_packet(uint8_t *data, int n)
 {
 	struct ip_hdr hdr;
 	ip_addr_t dest;
@@ -190,6 +273,45 @@ inject_packet(uint8_t *data, int n)
 	status = raw_sendto(pcb, p, &dest);
 	pbuf_free(p);
 	return status;
+}
+
+/* This funtion is called from UART interrupt, so I hope interface won't die
+ *
+ */
+static int ICACHE_FLASH_ATTR
+inject_ether_packet(uint8_t *data, int n)
+{
+	uint32_t irq_level = irq_save();
+
+	if (!netif_linkoutput_orig) {
+		COMM_WARN("netif_linkoutput_orig is zero");
+		goto fail;
+	}
+
+	struct netif *netif = eagle_lwip_getif(0);
+	if (!netif) {
+		COMM_WARN("netif doesn't exist yet");
+		goto fail;
+	}
+
+	struct pbuf *p = pbuf_alloc(PBUF_IP, n, PBUF_RAM);
+	if (!p) {
+		COMM_ERR("Failed to allocate packet of size %d", n);
+		goto fail;
+	}
+	memcpy(p->payload, data, n);
+	p->tot_len = n;
+	p->len = n;
+
+	netif_linkoutput_orig(netif, p);
+
+	irq_restore(irq_level);
+
+	COMM_INFO("***** sent %d bytes to linkoutput", n);
+	return 0;
+fail:
+	irq_restore(irq_level);
+	return -1;
 }
 
 static void ICACHE_FLASH_ATTR
@@ -254,24 +376,35 @@ scan_done(void *arg, STATUS status)
 	COMM_ERR(__VA_ARGS__); \
 	return; \
 } while(0)
-	
+
 static void ICACHE_FLASH_ATTR
 packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 {
-	/* COMM_DBG("Got packet from host: type=%d, payload_len=%d", */
-		  /* (int)type, n); */
-	/* uint32_t ps; */
-	/* asm("RSR %0, PS" : "=r"(ps)); */
-	/* COMM_INFO("packet from host: %d", (int)ps); */
+	/* It's not clear how to intercept the exact moment when interface is
+	   set up (it's not done on bootup). So we'll try to do it on every
+	   message from host.
+	   TODO: maybe use a timer instead? */
+	mitm_interface();
 
 	switch(type) {
 	case MSG_IP_PACKET:
 		COMM_DBG("Packet from host, %d bytes", n);
-		inject_packet(data, n);
+		if (global_forwarding_mode == FORWARDING_MODE_IP)
+			inject_ip_packet(data, n);
+		else
+			COMM_ERR("Cannot forward IP packet in mode %d",
+				 (int) global_forwarding_mode);
+		break;
+	case MSG_ETHER_PACKET:
+		if (global_forwarding_mode == FORWARDING_MODE_ETHER)
+			inject_ether_packet(data, n);
+		else
+			COMM_ERR("Cannot forward Ether packet in mode %d",
+				 (int) global_forwarding_mode);
 		break;
 	case MSG_WIFI_MODE_SET: {
 		int mode = 0;
-		TRY(n != 1, "Wrong size of DHCPC payload: %d", n);
+		TRY(n != 1, "Wrong size of WIFI_MODE_SET payload: %d", n);
 		switch (data[0]) {
 		case 0:
 			mode = NULL_MODE; break;
@@ -442,7 +575,6 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		comm_send_begin(MSG_STATION_CONN_STATUS_REPLY);
 		comm_send_u8(out);
 		comm_send_end();
-		break;
 	}
 	case MSG_STATION_RSSI_REQUEST: {
 		int8_t rssi = wifi_station_get_rssi();
@@ -456,6 +588,12 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 	case MSG_FORWARD_IP_BROADCASTS: {
 		TRY(n != 1, "Wrong size of Forward Ip Broadcasts payload: %d", n);
 		forward_ip_broadcasts = data[0];
+		comm_send_status(0);
+		break;
+	}
+	case MSG_SET_FORWARDING_MODE: {
+		TRY(n != 1, "Wrong size of Set Forwarding Mode payload: %d", n);
+		global_forwarding_mode = data[0];
 		comm_send_status(0);
 		break;
 	}

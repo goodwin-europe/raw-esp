@@ -6,6 +6,7 @@
 //#include "missing_declarations.h"
 
 #include "comm.h"
+#include "misc.h"
 #include "crc16.h"
 
 #define UART0   0
@@ -45,25 +46,6 @@ struct encoder enc_uart0 = {
 	.crc = CRC16_CCITT_INIT_VALUE,
 };
 
-
-static inline uint32_t irq_save()
-{
-	uint32_t level;
-	asm volatile ("RSIL %0, 15" : "=r"(level));
-	return level;
-}
-
-static inline void irq_restore(uint32_t level)
-{
-	uint32_t tmp, ps;
-	// IRQs should be disabled, since we need to do following operations
-	// atomically
-	level = level & 0xf;
-	asm volatile ("RSIL %0, 15\n" : "=r"(tmp));
-	asm volatile ("RSR.PS %0" : "=r"(ps));
-	ps = (ps & 0xfffffff0) | level;
-	asm volatile ("WSR.PS %0" : : "r"(ps));
-}
 
 /* ------------------------------------------------------------------ send */
 

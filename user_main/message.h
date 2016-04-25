@@ -1,3 +1,4 @@
+#pragma once
 /* Description of communication protocol
 
 ESP8266 and host exchange messages via rs232. Baud rate is 921600. Flow
@@ -31,9 +32,6 @@ but I managed to get working only 2MHz with FT232BM and 20cm cable.
 Someone on internet says 3MHz works with FT2232C.
 */
 
-#ifndef MESSAGE_H
-#define MESSAGE_H
-
 /* Includes command_id byte, actual data and CRC */
 #define MAX_MESSAGE_SIZE 2040
 
@@ -41,7 +39,9 @@ Someone on internet says 3MHz works with FT2232C.
 enum command_type {
 	/* Packet & data related messages */
 	MSG_IP_PACKET              = 0x00,
+	MSG_ETHER_PACKET           = 0x01,
 	MSG_FORWARD_IP_BROADCASTS  = 0x10,
+	MSG_SET_FORWARDING_MODE    = 0x11,
 
 	/* Basic WIFI messages */
 	MSG_WIFI_MODE_SET         = 0x20,
@@ -83,7 +83,8 @@ typical communication sequence.
 
 Basic usage after boot:
 0) Set desired loglevel, packet forwarding options, sleep mode with
-   MSG_LOG_LEVEL_SET, MSG_FORWARD_IP_BROADCASTS and MSG_WIFI_SLEEP_MODE_SET.
+   MSG_LOG_LEVEL_SET, MSG_SET_FORWARDING_MODE, MSG_FORWARD_IP_BROADCASTS
+   (if forwarding_mode is IP) and MSG_WIFI_SLEEP_MODE_SET.
    Each of those commands returns MSG_STATUS as documented in their
    descriptions.
 
@@ -128,6 +129,12 @@ MSG_IP_PACKET
   Transmits packet to host or from host to network. Currently only
   UDP/TCP are supported.
 
+MSG_ETHER_PACKET
+  dir: to/from host
+  data: packet with Ethernet header
+  reply: none
+  Transmits ethernet-level packets to host or from host to network.
+
 MSG_FORWARD_IP_BROADCASTS
   dir: from host
   data: uint8_t forward
@@ -135,6 +142,12 @@ MSG_FORWARD_IP_BROADCASTS
   If forward == 0, all broadcast packets will be passed to internal IP stack.
   If forward != 0, broadcasts will be forwarded to host.
 
+MSG_SET_FORWARDING_MODE
+  dir: from host
+  data: uint8_t mode
+  reply: STATUS
+  Argument is `enum forwarding_mode` packed as `uint8_t`. This message
+  selects packet capture and injection methods depending on `mode`.
 
 MSG_WIFI_MODE_SET
   dir: from host
@@ -317,13 +330,19 @@ MSG_PRINT_STATS
 #define MODE_STA 1
 #define MODE_SOFTAP 2
 
+enum forwarding_mode {
+	FORWARDING_MODE_NONE = 0,
+	FORWARDING_MODE_IP,
+	FORWARDING_MODE_ETHER,
+} PACKED;
+
 enum wifi_auth_mode {
 	WIFI_AUTH_OPEN = 0,
 	WIFI_AUTH_WEP = 1,
 	WIFI_AUTH_WPA_PSK = 2,
 	WIFI_AUTH_WPA2_PSK = 3,
 	WIFI_AUTH_WPA_WPA2_PSK = 4,
-};
+} PACKED;
 
 struct msg_station_conf {
 	uint8_t ssid_len;
@@ -387,5 +406,3 @@ struct msg_softap_net_conf {
 	uint32_t dhcpd_first_ip; /* if dhcpd is enabled */
 	uint32_t dhcpd_last_ip; /* if dhcpd is enabled */
 } PACKED;
-
-#endif
