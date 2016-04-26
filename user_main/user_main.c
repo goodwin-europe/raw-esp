@@ -575,6 +575,7 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		comm_send_begin(MSG_STATION_CONN_STATUS_REPLY);
 		comm_send_u8(out);
 		comm_send_end();
+		break;
 	}
 	case MSG_STATION_RSSI_REQUEST: {
 		int8_t rssi = wifi_station_get_rssi();
@@ -679,6 +680,7 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		TRY(n != 1, "Wrong size of Set Loglevel payload: %d", n);
 		comm_set_loglevel(data[0]);
 		comm_send_status(0);
+		break;
 	}
 	case MSG_PRINT_STATS: {
 		uint32_t rx_errors, crc_errors;
