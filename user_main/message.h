@@ -49,6 +49,8 @@ enum command_type {
 	MSG_WIFI_SCAN_REQUEST     = 0x22,
 	MSG_WIFI_SCAN_REPLY       = 0x23,
 	MSG_WIFI_SCAN_ENTRY       = 0x24,
+	MSG_WIFI_GET_MACADDR_REQUEST = 0x25,
+	MSG_WIFI_GET_MACADDR_REPLY   = 0x26,
 
 	/* STA related */
 	MSG_STATION_CONF_SET             = 0x40,
@@ -187,6 +189,18 @@ MSG_WIFI_SCAN_ENTRY
   reply: none
   Results of SCAN_REQUEST. Contain SSID, BSSID, channel, signal strength,
   index of current message and total number of messages.
+
+MSG_WIFI_GET_MACADDR_REQUEST
+  dir: from host
+  data: none
+  reply: WIFI_GET_MACADDR_REPLY or STATUS with error
+  Request module's MAC address.
+
+MSG_WIFI_GET_MACADDR_REPLY
+  dir: to host
+  data: uint8_t mac[6]
+  reply: none
+  Reply for MAC address request
 
 
 MSG_STATION_CONF_SET

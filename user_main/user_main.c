@@ -200,6 +200,9 @@ static err_t netif_linkoutput_mitm(struct netif *netif, struct pbuf *p)
 
 static void mitm_interface()
 {
+	/* TODO: use STATION_IF / SOFTAP_IF defines depending on operation
+	   mode. Currently ethernet forwad functionality is tested only
+	   in STA mode. */
 	struct netif *netif = eagle_lwip_getif(0);
 	if (!netif) {
 		COMM_DBG("mitm_interface: netif not ready");
@@ -556,6 +559,15 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		TRY(!wifi_station_scan(&config, scan_done), "Scan request failed");
 
 		comm_send_status(0);
+		break;
+	}
+	case MSG_WIFI_GET_MACADDR_REQUEST: {
+		uint8_t mac[6];
+		/* TODO: add support for getting AP mac ? */
+		TRY(!wifi_get_macaddr(STATION_IF, mac), "Failed to get mac address");
+		comm_send_begin(MSG_WIFI_GET_MACADDR_REPLY);
+		comm_send_data(mac, sizeof(mac));
+		comm_send_end();
 		break;
 	}
 	case MSG_STATION_CONN_STATUS_REQUEST: {
