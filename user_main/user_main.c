@@ -297,7 +297,7 @@ inject_ether_packet(uint8_t *data, int n)
 		goto fail;
 	}
 
-	struct pbuf *p = pbuf_alloc(PBUF_IP, n, PBUF_RAM);
+	struct pbuf *p = pbuf_alloc(PBUF_RAW, n, PBUF_RAM);
 	if (!p) {
 		COMM_ERR("Failed to allocate packet of size %d", n);
 		goto fail;
