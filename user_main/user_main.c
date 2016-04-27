@@ -307,6 +307,7 @@ inject_ether_packet(uint8_t *data, int n)
 	p->len = n;
 
 	netif_linkoutput_orig(netif, p);
+	pbuf_free(p);
 
 	irq_restore(irq_level);
 
