@@ -145,32 +145,32 @@ init_wlan() {
 }
 
 
-err_t netif_input_mitm(struct pbuf *p, struct netif *netif)
+static err_t netif_input_mitm(struct pbuf *p, struct netif *netif)
 {
 	COMM_DBG("mitm input, size=%d", (int)p->tot_len);
 	/* COMM_DBG("**** mitm input, size=%d, %p", */
 	/* 	 p->tot_len, netif_input_orig); */
 
-	if (global_forwarding_mode != FORWARDING_MODE_ETHER) {
+	if (global_forwarding_mode == FORWARDING_MODE_ETHER) {
+		struct pbuf *tmp;
+		comm_send_begin(MSG_ETHER_PACKET);
+		for(tmp = p; tmp; tmp = tmp->next) {
+			comm_send_data(tmp->payload, tmp->len);
+		}
+		comm_send_end();
+
+		pbuf_free(p);
+		return 0;
+	} else {
 		if (netif_input_orig)
 			return netif_input_orig(p, netif);
 
 		COMM_WARN("mitm input zero pointer");
 		return 0;
 	}
-
-	struct pbuf *tmp;
-	comm_send_begin(MSG_ETHER_PACKET);
-	for(tmp = p; tmp; tmp = tmp->next) {
-		comm_send_data(tmp->payload, tmp->len);
-	}
-	comm_send_end();
-
-	pbuf_free(p);
-	return 0;
 }
 
-err_t netif_output_mitm(struct netif *netif, struct pbuf *p, ip_addr_t *ipaddr)
+static err_t netif_output_mitm(struct netif *netif, struct pbuf *p, ip_addr_t *ipaddr)
 {
 	COMM_DBG("mitm output, size=%d", (int)p->tot_len);
 
@@ -184,7 +184,7 @@ err_t netif_output_mitm(struct netif *netif, struct pbuf *p, ip_addr_t *ipaddr)
 	return 0;
 }
 
-err_t netif_linkoutput_mitm(struct netif *netif, struct pbuf *p)
+static err_t netif_linkoutput_mitm(struct netif *netif, struct pbuf *p)
 {
 	COMM_DBG("mitm linkoutput, size=%d", (int)p->tot_len);
 
@@ -202,24 +202,27 @@ static void mitm_interface()
 {
 	struct netif *netif = eagle_lwip_getif(0);
 	if (!netif) {
-		COMM_DBG("********** netif not ready");
+		COMM_DBG("mitm_interface: netif not ready");
 		return;
 	}
 
 	if (netif->input != netif_input_mitm) {
-		COMM_INFO("************** mitm input");
+		COMM_INFO("mitm_interface: input %x",
+			  (uint32_t)((void *)netif->input));
 		netif_input_orig = netif->input;
 		netif->input = netif_input_mitm;
 	}
 
 	if (netif->output != netif_output_mitm) {
-		COMM_INFO("************** mitm output");
+		COMM_INFO("mitm_interface: output %x",
+			  (uint32_t)((void *)netif->output));
 		netif_output_orig = netif->output;
 		netif->output = netif_output_mitm;
 	}
 
 	if (netif->linkoutput != netif_linkoutput_mitm) {
-		COMM_INFO("************** mitm linkoutput");
+		COMM_INFO("mitm_interface: linkoutput %x",
+			  (uint32_t)((void *)netif->linkoutput));
 		netif_linkoutput_orig = netif->linkoutput;
 		netif->linkoutput = netif_linkoutput_mitm;
 	}
@@ -307,7 +310,7 @@ inject_ether_packet(uint8_t *data, int n)
 
 	irq_restore(irq_level);
 
-	COMM_INFO("***** sent %d bytes to linkoutput", n);
+	/* COMM_INFO("***** sent %d bytes to linkoutput", n); */
 	return 0;
 fail:
 	irq_restore(irq_level);
