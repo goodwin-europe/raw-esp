@@ -160,7 +160,7 @@ MSG_WIFI_MODE_SET
 
 MSG_WIFI_SLEEP_MODE_SET
   dir: from host
-  data: uint8_t sleep_type
+  data: uint8_t sleep_type (enum wifi_sleep_mode)
   reply: STATUS
   Set sleep level.
   0 -- None
@@ -356,6 +356,12 @@ enum wifi_auth_mode {
 	WIFI_AUTH_WPA_PSK = 2,
 	WIFI_AUTH_WPA2_PSK = 3,
 	WIFI_AUTH_WPA_WPA2_PSK = 4,
+} PACKED;
+
+enum wifi_sleep_mode {
+	WIFI_SLEEP_NONE = 0,
+	WIFI_SLEEP_MODEM,
+	WIFI_SLEEP_LIGHT
 } PACKED;
 
 struct msg_station_conf {
