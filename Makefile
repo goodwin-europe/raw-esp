@@ -24,7 +24,8 @@ FW_BASE		= firmware
 # SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.1.1# works with liblwip_536
 # SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.2.0
 # SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.3.0
-SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.5.3
+# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.4.0
+SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.5.3p1
 
 # esptool.py path and port
 ESPTOOL		?= esptool.py
