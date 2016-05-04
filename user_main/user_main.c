@@ -740,6 +740,7 @@ user_init(void)
 	/* lwip_init(); */
 
 	COMM_INFO("SDK version: %s", system_get_sdk_version());
+	COMM_INFO("FW version: %s", FW_VERSION);
 	COMM_INFO("Heap size: %d", system_get_free_heap_size());
 	COMM_INFO("Alignment: %d", __BIGGEST_ALIGNMENT__);
 

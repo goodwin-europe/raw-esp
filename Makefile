@@ -14,6 +14,7 @@
 
 # Output directors to store intermediate compiled files
 # relative to the project directory
+FW_VERSION      = \"$(shell git describe --long --always --tags --dirty)\"
 BUILD_BASE	= build
 FW_BASE		= firmware
 
@@ -45,7 +46,9 @@ LIBS		= c gcc hal pp phy net80211 wpa main lwip crypto
 
 # compiler flags using during compilation of source files
 # CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Werror=implicit-function-declaration -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
-CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH -DLWIP_OPEN_SRC
+CFLAGS = -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL \
+    -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals \
+    -D__ets__ -DICACHE_FLASH -DLWIP_OPEN_SRC -DFW_VERSION=$(FW_VERSION)
 
 # linker flags used to generate the main object file
 LDFLAGS		= -nostdlib -Wl,--no-check-sections -u call_user_start -Wl,-static -Wl,-Map=output.map
