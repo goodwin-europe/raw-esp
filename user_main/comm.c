@@ -1,3 +1,10 @@
+/* TODO:
+ * - stop dispatching packets directly from interrupt handler context,
+ * - stop disabling interrupts during packet transmission.
+ *
+ * Both features will need either packet queues + dynamic allocation or
+ * two big static atomic ringbuffers.
+ */
 #include "osapi.h"
 #include "eagle_soc.h"
 #include "c_types.h"
@@ -12,7 +19,7 @@
 #define UART0   0
 #define UART1   1
 
-// Shift beginnig of buffer so payload is aligned
+// Shift beginnig of the buffer so payload is aligned
 #define BUF_ALIGN_OFFSET (__BIGGEST_ALIGNMENT__ - 1)
 
 struct decoder {

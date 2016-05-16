@@ -1,13 +1,21 @@
 #pragma once
-/* Description of communication protocol
+/*
+TODO:
+  - add serial numbers to detect lost packets,
+  - add id field to request and reply, and mark reply with request's id.
+    Currently if requests are sent asyncronously from different parts of
+    host program, it can be difficult to tell what reply corresponds to
+    what request.
 
-ESP8266 and host exchange messages via rs232. Baud rate is 921600. Flow
-control isn't used, but can be implemented with CTS/RTS if required.
+Description of communication protocol
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ESP8266 and host exchange messages via rs232. Default baud rate is 115200.
+Flow control isn't used, but can be implemented with CTS/RTS if required.
 
 Since rs232 has no inherent concept of framing, messages are packed
 using HDLC-like byte-stuffing. End of message is marked with END byte.
 If a control byte (END or ESC) is encountered in message body, it's
-replaced with two bytes: (ESC) and (cntrl ^ XOR). Values for ESC, END,
+replaced with two bytes: (ESC) and (x ^ XOR). Values for ESC, END,
 XOR are defined in comm.h.
 
 Unpacked message body has following format:
@@ -22,17 +30,23 @@ fields:
 
 Messages of certain types are valid only when sent in a specific
 direction, e. g. WiFi configuration requests make sense only when
-sent to ESP8266. Some messages have no payload, some include
-structs, some contain variable-sized data. Commands are fully desribed
+sent from host to ESP8266. Some messages have no payload, some include
+structs, some contain variable-sized data. All commands are fully desribed
 below.
 
-Baud rate is currently set to 2MHz in user_main.c/user_init(). It's
-derived from APB's 80MHz by a simple divider. ESP8266 I/O may have 20MHz limit,
-but I managed to get working only 2MHz with FT232BM and 20cm cable.
-Someone on internet says 3MHz works with FT2232C.
+All integers are packed in native endianness mode, i.e. little-endian.
+
+Baud rate is set to 115200 on boot. It can be reconfigured to something faster
+at any time, but this setting is volatile and isn't saved between reboots.
+Keep in mind that on ESP baud is derived from APB's 80MHz by an integer
+divider. Looks like ESP8266 I/Os may be limited to 20MHz; I've managed to get
+max 2MHz with FT232BM and 20cm cable. On iMX53 it worked fine at 4MHz; judging
+ by waveforms it could be easily pushed up to 8MHz had Linux's userspace
+ allowed it.
 */
 
-/* Includes command_id byte, actual data and CRC */
+/* Message size includes command_id byte, actual data and CRC, doesn't include
+byte stuffing. */
 #define MAX_MESSAGE_SIZE 2040
 
 
@@ -79,24 +93,25 @@ enum command_type {
 };
 
 /* On boot/reset module is configured with whatever settings were present
-in NVRAM and bootup code. I would be flaky to account for this stored state
+in NVRAM and bootup code. It would be flaky to account for this stored state
 in host's state machine, so module should be cleanly reinitialized. Here is
 typical communication sequence.
 
-Basic usage after boot:
+Typical configuration / use after boot:
 0) Set desired loglevel, packet forwarding options, sleep mode with
    MSG_LOG_LEVEL_SET, MSG_SET_FORWARDING_MODE, MSG_FORWARD_IP_BROADCASTS
-   (if forwarding_mode is IP) and MSG_WIFI_SLEEP_MODE_SET.
-   Each of those commands returns MSG_STATUS as documented in their
-   descriptions.
+   (if forwarding_mode is IP) and MSG_WIFI_SLEEP_MODE_SET. Each of those
+   commands returns MSG_STATUS as documented below. Set baud with SET_BAUD.
+   It's actually a good idea to syncronize with MSG_ECHO before configuring
+   module, and once more after new baud is set to ensure that serial link
+   is operational.
 
 1) Send MSG_WIFI_MODE_SET with desired operation mode.
 
 2) If STA mode is used, available APs may be listed with
-   MSG_WIFI_SCAN_REQUEST.
-   To select an AP, send MSG_STATION_CONF_SET. After this message the
-   module will start connecting to the given AP. Reconnects are automatic
-   and doesn't require further actions from host.
+   MSG_WIFI_SCAN_REQUEST. To select an AP, send MSG_STATION_CONF_SET. After
+   this message the module will start connecting to the given AP. Reconnects
+   are automatic and doesn't require further actions from host.
    If static IP is desired, set it with MSG_STATION_STATIC_IP_CONF_SET.
    If ip should be acquired by DHCP, enable DHCP client with
      MSG_STATION_DHCPC_STATE_SET message.
@@ -105,44 +120,39 @@ Basic usage after boot:
    MSG_SOFTAP_STATIC_IP_CONF_SET, MSG_SOFTAP_DHCPD_STATE_SET
    and MSG_SOFTAP_DHCPD_CONF_SET (if dhcpd is enabled).
 
-4) Enjoy MSG_IP_PACKET frames.
+4) Enjoy MSG_IP_PACKET / MSG_ETHERNET_PACKET frames.
 
 5) Resilency could be optionally enchanced by checking if module is still
-   alive with MSG_ECHO_REQUEST / MSG_ECHO_REPLY messages from time to time.
+   alive using periodic polling with MSG_ECHO_REQUEST / MSG_ECHO_REPLY.
 
-
-As MSG_IP_PACKET is an unsolicited message, it can be interleaved with
-expected messages at any initialization stage. STA can be connected somewhere
-probably even before MSG_BOOT is send, since ESP8266 OS restores some
-configuration options from NVRAM. Though packets will probably be not
-received until after MSG_BOOT, since subscriptions to lwip are done a
-bit later.
-
-Also be ready for unexpected MSG_BOOT, firmware is definitely not bug free,
-and tends to reset on OOM. When MSG_BOOT is received, reconfiguration
-is mandatory.
-
+Be ready for unexpected MSG_BOOT, firmware is definitely not bug free,
+and tends to reset on OOM. When MSG_BOOT is received, full reconfiguration
+is mandatory. If non-default baud rate is used, on spurious reboot module will
+most likely go silent though.
 
 
 MSG_IP_PACKET
   dir: to/from host
   data: packet with IP header
   reply: none
-  Transmits packet to host or from host to network. Currently only
-  UDP/TCP are supported.
+  Transmits IP packet to host or from host to network. Currently only
+  UDP/TCP are supported. This packet is valid only in IP-forwarding mode.
 
 MSG_ETHER_PACKET
   dir: to/from host
   data: packet with Ethernet header
   reply: none
-  Transmits ethernet-level packets to host or from host to network.
+  Transmits ethernet-level packets to host or from host to network. This
+  type of packet is valid only in Ethernet-forwarding mode.
 
 MSG_FORWARD_IP_BROADCASTS
   dir: from host
   data: uint8_t forward
   reply: STATUS
   If forward == 0, all broadcast packets will be passed to internal IP stack.
-  If forward != 0, broadcasts will be forwarded to host.
+  If forward != 0, broadcasts will be forwarded to host. This setting makes
+  sense only in IP-forwarding mode. In Ethernet mode broadcasts are not
+  filtered.
 
 MSG_SET_FORWARDING_MODE
   dir: from host
@@ -213,8 +223,8 @@ MSG_STATION_STATIC_IP_CONF_SET
   dir: from host
   data: struct msg_ip_conf
   reply: STATUS
-  Use static network settings. If device's DHCP client was on it's
-  switched off. Use ip, netmask and gateway provided in the payload.
+  Switch to static network settings. If device's DHCP client was on it's
+  switched off. Sets ip, netmask and gateway from the payload.
 
 MSG_STATION_DHCPC_STATE_SET
   dir: from host
@@ -226,7 +236,7 @@ MSG_STATION_IP_CONF_REQUEST
   dir: from host
   data: none
   reply: STATION_IP_CONF_REPLY or STATUS with error
-  Request to get wireless IP configuration (set by DHCPC or STATIC_IP_CONF)
+  Request wireless IP configuration (set by DHCPC or STATIC_IP_CONF)
 
 MSG_STATION_IP_CONF_REPLY
   dir: to host
@@ -251,7 +261,8 @@ MSG_STATION_CONN_STATUS_REPLY
     2 -- wrong password,
     3 -- no AP found,
     4 -- connect failed,
-    5 -- got IP.
+    5 -- got IP (or connected, if static setting or Ethernet-forwarding moe
+         is used)
 
 MSG_STATION_RSSI_REQUEST
   dir: from host
@@ -263,14 +274,14 @@ MSG_STATION_RSSI_REPLY
   dir: to host
   data: int8_t status
   reply: none
-  RSSI level should be negative, otherwise docs lie and value is
-  probably incorrect.
+  Returned RSSI level should be negative, otherwise docs are incorrect and
+  value is incorrect too.
 
 MSG_SOFTAP_CONF_SET
   dir: from host
   data: struct msg_softap_conf
   reply: MSG_STATUS
-  Sets SSID, password, channel, authentification mode and beacon interval;
+  Sets SSID, password, channel, authentification mode and beacon interval.
 
 MSG_SOFTAP_NET_CONF_SET
   dir: from host
@@ -291,7 +302,7 @@ MSG_BOOT
   data: none
   reply: none
   This message is sent on module boot. It can be used to catch unexpected
-  reboots.
+  reboots if default baud rate isn't changed.
 
 MSG_LOG_LEVEL_SET
   dir: from host
@@ -321,7 +332,7 @@ MSG_ECHO_REPLY
   dir: from/to host
   data: copied from ECHO_REQUEST
   reply: none
-  Reply to previously requested echo
+  Reply to previously requested echo.
 
 MSG_SET_BAUD
   dir: from host

@@ -1,3 +1,7 @@
+/* TODO:
+ *   - forward some ICMP types in IP-forwarding mode, e.g. ping.
+ *   - AP support in Ethernet-forwarding mode.
+ */
 #include "user_interface.h"
 
 #include "ets_sys.h"
