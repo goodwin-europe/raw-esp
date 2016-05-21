@@ -1,5 +1,4 @@
-Raw IP / Ethernet packet firmware for ESP8266 WiFi module
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Raw IP / Ethernet packet firmware for ESP8266 WiFi module
 
 It's sometimes desirable to bypass ESP's TCP/IP stack and use network stack
 of a host microcontroller instead.
@@ -23,14 +22,14 @@ packets are dropped. All packets coming from WiFi interface are redirected to
 the host, and packets coming from host are passed directly to ESP's WiFi
 interface.
 
-Compilation
-~~~~~~~~~~~
+## Compilation
+
 Install cross-compilers as usual, change `SDK_BASE` in the `Makefile` to the
 root of non-OS ESP8266 SDK. After that run `make`. Firmware binaries will be
 built in `firmware` dir.
 
 Prebuilt firmware is also provided in `bin` dir.
 
-Host interface
-~~~~~~~~~~~~~~
+## Host interface
+
 Host interface is documented in `user_main/message.h`.
