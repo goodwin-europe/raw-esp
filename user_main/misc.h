@@ -2,7 +2,7 @@
 #include "c_types.h"
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
-
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 // I'm not completely sure that those functions really do what they should.
 static inline uint32_t irq_save()
 {

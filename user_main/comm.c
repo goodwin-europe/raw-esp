@@ -14,6 +14,7 @@
 
 #include "comm.h"
 #include "misc.h"
+#include "cobs.h"
 #include "crc16.h"
 
 #define UART0   0
@@ -23,79 +24,94 @@
 #define BUF_ALIGN_OFFSET (__BIGGEST_ALIGNMENT__ - 1)
 
 struct decoder {
-	uint8_t buf[BUF_ALIGN_OFFSET + MAX_MESSAGE_SIZE];
-	uint32_t pos;
-	uint8_t in_escape;
-	uint8_t err;
+	struct cobs_decoder cobs;
+	uint8_t buf[BUF_ALIGN_OFFSET + COBS_ENCODED_SIZE(MAX_MESSAGE_SIZE)];
 
-	uint16_t crc;
+	uint32_t proto_errors;
 	uint32_t crc_errors;
-	uint32_t total_errors;
-
 	comm_callback_t cb;
 };
 
 struct encoder {
-	uint16_t crc;
+	uint8_t buf[COBS_ENCODED_SIZE(MAX_MESSAGE_SIZE)];
+	size_t idx;
 };
 
 
-struct decoder dec_uart0 = {
-	.pos = BUF_ALIGN_OFFSET,
-	.in_escape = 0,
-	.err = 0,
-	.crc_errors = 0,
-	.total_errors = 0,
-	.cb = NULL
-};
-
-struct encoder enc_uart0 = {
-	.crc = CRC16_CCITT_INIT_VALUE,
-};
+struct decoder dec_uart0;
+struct encoder enc_uart0;
 
 
 /* ------------------------------------------------------------------ send */
+/* TX implementation here is quite hacky and is inherited from times when
+   simple HDLC-like framing was used. It was possible to transfer several
+   chunks of data prepared on stack directly to the UART FIFO, and then
+   send end of frame.
+
+   Currently used COBS encoder has to see all frame at once, so we copy
+   chunks of data into a static buffer. When frame is complete, it's encoded
+   and sent to UART. Since I don't use any OS-level locks, interrupt has
+   to be disabled since beginning of this process to the end to provide
+   exclusive access to encoder. That's not good and code should be
+   refactored later (hopefully).
+*/
 
 static uint32_t irq_level;
 
-/* FIXME! */
 void ICACHE_FLASH_ATTR
-comm_send_begin(uint8_t c) {
-	//ETS_INTR_LOCK();
-	/* os_intr_lock(); */
-	irq_level = irq_save();
-	/* wdt_feed(); */
-	comm_send_u8(c);
+encoder_init(struct encoder *e)
+{
+	e->idx = 0;
+}
+
+bool ICACHE_FLASH_ATTR
+encoder_put_data(struct encoder *e, void *data, size_t len)
+{
+	if (e->idx + len > sizeof(e->buf)) {
+		return FALSE;
+	}
+
+	memcpy(e->buf + e->idx, data, len);
+	e->idx += len;
+
+	return TRUE;
+}
+
+bool ICACHE_FLASH_ATTR
+encoder_finalize(struct encoder *e)
+{
+	if (COBS_ENCODED_SIZE(e->idx + 2) > sizeof(e->buf)) {
+		return FALSE;
+	}
+
+	uint16_t crc = crc16_ccitt_block(e->buf, e->idx);
+	encoder_put_data(e, &crc, sizeof(crc)); /* Caution: assule LE here */
+
+	ssize_t final_size = cobs_encode(e->buf, e->idx, sizeof(e->buf));
+	if (final_size < 0) {
+		e->idx = 0;
+		return FALSE;
+	} else {
+		e->idx = final_size;
+		return TRUE;
+	}
 }
 
 void ICACHE_FLASH_ATTR
-comm_send_end()
-{
-	uint16_t crc = enc_uart0.crc;
-	comm_send_data((void *)&crc, sizeof(crc));
-	uart_tx_one_char(UART0, FRAME_END);
-	enc_uart0.crc = CRC16_CCITT_INIT_VALUE;
-
-	irq_restore(irq_level);
-	/* ets_intr_unlock(); */
+comm_send_begin(uint8_t c) {
+	irq_level = irq_save();
+	encoder_put_data(&enc_uart0, &c, 1);
 }
 
 void ICACHE_FLASH_ATTR
 comm_send_u8(uint8_t c) {
-	if ((c == FRAME_END) || (c == FRAME_ESC)) {
-		uart_tx_one_char(UART0, FRAME_ESC);
-		uart_tx_one_char(UART0, c ^ FRAME_XOR);
-	} else {
-		uart_tx_one_char(UART0, c);
-	}
-	crc16_ccitt_update(&enc_uart0.crc, c);
+	encoder_put_data(&enc_uart0, &c, 1);
 }
 
 void ICACHE_FLASH_ATTR
-comm_send_data(uint8_t *data, int n)
+comm_send_data(uint8_t *data, size_t n)
 {
-	for (; n > 0; n--)
-		comm_send_u8(*(data++));
+	encoder_put_data(&enc_uart0, data, n);
 }
 
 void ICACHE_FLASH_ATTR
@@ -105,70 +121,70 @@ comm_send_status(uint8_t s)
 	comm_send_u8(s);
 	comm_send_end();
 }
+
+void ICACHE_FLASH_ATTR
+comm_send_end()
+{
+	size_t i;
+
+	encoder_finalize(&enc_uart0);
+	for (i = 0; i < enc_uart0.idx; i++)
+		uart_tx_one_char(UART0, enc_uart0.buf[i]);
+	enc_uart0.idx = 0;
+
+	irq_restore(irq_level);
+	/* ets_intr_unlock(); */
+}
+
+
 /* ------------------------------------------------------------------ receive */
 
 static inline void ICACHE_FLASH_ATTR
-check_and_dispatch(struct decoder *d)
+decoder_check_and_dispatch_cb(void *decoder, uint8_t *data, size_t len)
 {
+	struct decoder *dec = decoder;
 	uint16_t crc_msg;
 	uint16_t crc_calc;
 
-	if (d->err) {
-		d->total_errors++;
+	if (len < 3) {
+		dec->proto_errors ++;
 		return;
 	}
 
-	if (d->pos == 0)
-		return;
-
-	if (d->pos < 1 + 2) {
-		d->total_errors++;
-		return;
-	}
-
-	crc_calc = crc16_ccitt_block(d->buf, d->pos - 2);
-	memcpy(&crc_msg, d->buf + d->pos - 2, 2);
+	crc_calc = crc16_ccitt_block(data, len - 2);
+	memcpy(&crc_msg, data + len - 2, 2);
 	if (crc_calc != crc_msg) {
-		d->crc_errors++;
-		d->total_errors++;
+		dec->crc_errors++;
 		return;
 	}
 
-	if (d->cb)
-		d->cb(d->buf[BUF_ALIGN_OFFSET],
-		      &d->buf[BUF_ALIGN_OFFSET + 1],
-		      d->pos - BUF_ALIGN_OFFSET - 3);
+	if (dec->cb)
+		dec->cb(data[0], data + 1, len - 3);
 }
 
 static inline void ICACHE_FLASH_ATTR
-add_char(struct decoder *d, uint8_t c) {
-	if (d->pos >= sizeof(d->buf))
-		d->err = 1;
-	else
-		d->buf[d->pos++] = c;
-}
-
-static inline void ICACHE_FLASH_ATTR
-comm_rx_char(struct decoder *d, uint8_t c)
+decoder_init(struct decoder *dec, comm_callback_t cb)
 {
-	if (d->in_escape) {
-		add_char(d, c ^= FRAME_XOR);
-		d->in_escape = 0;
-	} else if (c == FRAME_END) {
-		check_and_dispatch(d);
-		d->pos = BUF_ALIGN_OFFSET;
-		d->err = 0;
-		d->in_escape = 0;
-	} else if (c == FRAME_ESC) {
-		d->in_escape = 1;
-	} else {
-		add_char(d, c);
-	}	
+	cobs_decoder_init(
+		&dec->cobs,
+		dec->buf + BUF_ALIGN_OFFSET, sizeof(dec->buf) - BUF_ALIGN_OFFSET,
+		decoder_check_and_dispatch_cb, dec);
+	dec->proto_errors = 0;
+	dec->crc_errors = 0;
+	dec->cb = cb;
 }
+
+static inline void ICACHE_FLASH_ATTR
+decoder_put_data(struct decoder *dec, void *data, size_t len)
+{
+	cobs_decoder_put(&dec->cobs, data, len);
+}
+
 
 void uart0_rx_intr_handler(void *para)
 {
-	uint32_t n;
+	uint8_t buf[64];
+	uint32_t i, n;
 	uint8 c;
 
 	if (UART_RXFIFO_FULL_INT_ST !=
@@ -183,8 +199,11 @@ void uart0_rx_intr_handler(void *para)
 		if (!n)
 			break;
 
-		c = READ_PERI_REG(UART_FIFO(UART0)) & 0xFF;
-		comm_rx_char(&dec_uart0, c);
+		n = MIN(n, sizeof(buf));
+		for (i = 0; i < n; i++) {
+		    buf[i] = READ_PERI_REG(UART_FIFO(UART0)) & 0xFF;
+		}
+		decoder_put_data(&dec_uart0, buf, n);
 	}
 }
 
@@ -199,12 +218,13 @@ comm_set_loglevel(uint8_t level)
 
 void ICACHE_FLASH_ATTR
 comm_get_stats(uint32_t *rx_errors, uint32_t *rx_crc_errors) {
-	*rx_errors = dec_uart0.total_errors;
+	*rx_errors = dec_uart0.proto_errors + dec_uart0.crc_errors;
 	*rx_crc_errors = dec_uart0.crc_errors;
 }
 
 void ICACHE_FLASH_ATTR
 comm_init(comm_callback_t cb) {
-	dec_uart0.cb = cb;
-	uart_tx_one_char(UART0, FRAME_END);
+	encoder_init(&enc_uart0);
+	decoder_init(&dec_uart0, cb);
+	uart_tx_one_char(UART0, COBS_BYTE_EOF);
 }

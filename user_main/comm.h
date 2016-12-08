@@ -13,7 +13,7 @@ typedef void (*comm_callback_t)(uint8_t type, uint8_t *data, uint32_t len);
 void comm_init(comm_callback_t cb);
 void comm_send_begin(uint8_t c);
 void comm_send_u8(uint8_t);
-void comm_send_data(uint8_t *, int);
+void comm_send_data(uint8_t *, size_t);
 void comm_send_end();
 void comm_send_status(uint8_t);
 
