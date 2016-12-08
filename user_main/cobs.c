@@ -1,61 +1,58 @@
+#include <string.h>
 #include "cobs.h"
 
-#define BYTE_EOF               0
-
-/* encodes in place */
-ssize_t cobs_encode(uint8_t *data, size_t src_len, size_t dst_len)
+ssize_t cobs_encode(uint8_t *data, size_t len, size_t buffer_size)
 {
-  uint8_t *src, *p, *code_ptr, code_len;
-  uint8_t ch;
+	size_t max_encoded_len = COBS_ENCODED_SIZE(len);
+	if (buffer_size < max_encoded_len)
+		return -1;
 
-  if ((src_len + 1 + (src_len >> 8) + 1) > dst_len) // 1 - BYTE_EOF, 1 - overhead
-    return 0;
+	size_t max_overhead = max_encoded_len - len;
+	uint8_t *src = data + max_overhead;
+	uint8_t *marker = data;
+	uint8_t *dst = data + 1;
 
-  src = p = data;
+	memmove(src, data, len);
 
-  code_ptr = p++;
-  code_len = 0x01;
+	/* It's possible to keep `distance` directly in `*marker`, but I'm not
+           sure that compiler will figure out aliasing */
+	size_t distance = 1;
+	while (src != data + max_overhead + len) {
+		if (distance > COBS_MAX_DISTANCE) {
+			*marker = distance;
+			marker = dst;
+			dst++;
+			distance = 1;
+		}
 
-  ch = *src++;
-
-  while (src_len--)
-  {
-    uint8_t ch_next = *src++;
-    if (ch == BYTE_EOF)
-    {
-      *code_ptr = code_len;
-      code_ptr = p++;
-      code_len = 0x01;
-    }
-    else
-    {
-      *p++ = ch;
-      code_len++;
-      if (code_len == 0xFF)
-      {
-        *code_ptr = code_len;
-        code_ptr = p++;
-        code_len = 0x01;
-      }
-    }
-    ch = ch_next;
-  }
-
-  *code_ptr = code_len;
-  *p++ = BYTE_EOF;
-
-  return (uint16_t)(p - data);
+		if (*src == COBS_BYTE_EOF) {
+			*marker = distance;
+			marker = dst;
+			distance = 1;
+		} else {
+			*dst = *src;
+			distance++;
+		}
+		src++;
+		dst++;
+	}
+	*marker = distance;
+	*dst++ = COBS_BYTE_EOF;
+	return dst - data;
 }
 
 
-void cobs_decoder_init(struct cobs_decoder *cobs, uint8_t *buf, size_t buf_size)
+void cobs_decoder_init(struct cobs_decoder *cobs, uint8_t *buf, size_t buf_size,
+		       cobs_callback_t cb, void *cb_data)
 {
   cobs->state = DEC_IDLE;
   cobs->buf = buf;
   cobs->buf_size = buf_size;
   cobs->cb = cb;
+  cobs->cb_data = cb_data;
 }
 
+/* FIXME: check logic if cnt = 0xff */
 void cobs_decoder_put(struct cobs_decoder *cobs, uint8_t const *src, size_t len)
 {
   while (len--)
@@ -67,7 +64,7 @@ void cobs_decoder_put(struct cobs_decoder *cobs, uint8_t const *src, size_t len)
     switch (cobs->state)
     {
       case DEC_IDLE:
-        if (ch != BYTE_EOF)
+        if (ch != COBS_BYTE_EOF)
         {
           cobs->buf_ind = 0;
           cobs->block_cnt = cobs->block_len = ch;
@@ -76,13 +73,13 @@ void cobs_decoder_put(struct cobs_decoder *cobs, uint8_t const *src, size_t len)
       break;
 
       case DEC_BLOCK:
-        if (ch != BYTE_EOF)
+        if (ch != COBS_BYTE_EOF)
         {
           if (cobs->block_cnt == 1)
           {
             if (cobs->block_len < 0xFF)
               if (cobs->buf_ind < cobs->buf_size)
-                cobs->buf[cobs->buf_ind++] = BYTE_EOF;
+                cobs->buf[cobs->buf_ind++] = COBS_BYTE_EOF;
             cobs->block_cnt = cobs->block_len = ch;
           }
           else
@@ -95,7 +92,7 @@ void cobs_decoder_put(struct cobs_decoder *cobs, uint8_t const *src, size_t len)
         else
         {
           if (cobs->block_cnt == 1)
-            cobs->cb(cobs->buf, cobs->buf_ind);
+            cobs->cb(cobs->cb_data, cobs->buf, cobs->buf_ind);
           cobs->buf_ind = 0;
           cobs->state = DEC_IDLE;
         }
