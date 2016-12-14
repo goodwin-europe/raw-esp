@@ -13,10 +13,14 @@ ESP8266 and host exchange messages via rs232. Default baud rate is 115200.
 Flow control isn't used, but can be implemented with CTS/RTS if required.
 
 Since rs232 has no inherent concept of framing, messages are packed
-using HDLC-like byte-stuffing. End of message is marked with END byte.
-If a control byte (END or ESC) is encountered in message body, it's
-replaced with two bytes: (ESC) and (x ^ XOR). Values for ESC, END,
-XOR are defined in comm.h.
+using COBS framing (the project used DLC in earlier releases). Zero
+byte always means end of frame. All occurrences of a zero byte in payload
+are replaced with distance to the next zero in payload or distance
+to end of packet for the last zero. This scheme is slightly extended
+to accomodate packets larger than 254 bytes, see cobs.h and cobs.c.
+Here is a short example:
+  payload:        13 08 00 F0 00 00 34 A4 11
+  framed data: 03 13 08 02 F0 01 04 34 A4 11 00
 
 Unpacked message body has following format:
 | uint8_t type | uint8_t data[] | uint16_t crc |
