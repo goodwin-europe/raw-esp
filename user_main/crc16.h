@@ -30,14 +30,22 @@
 #include "c_types.h"
 
 #define CRC16_CCITT_INIT_VALUE 0
+#define CRC16_INIT_VALUE 0xFFFF
+
+extern const uint16_t crc16_tab[256];
 extern const uint16_t crc16_ccitt_tab[256];
 
+unsigned short crc16_block(const uint8_t *buf, int len);
 unsigned short crc16_ccitt_block(const uint8_t *buf, int len);
+
+static void crc16_update(uint16_t *crc, uint8_t data)
+{
+	*crc = (*crc >> 8) ^ crc16_tab[(*crc ^ data) & 0xFF];
+}
 
 static void crc16_ccitt_update(uint16_t *crc, uint8_t data)
 {
 	int offset = ((*crc >> 8) ^ data) & 0x00ff;
 	*crc = (*crc << 8) ^ crc16_ccitt_tab[offset];
 }
-
 #endif /* _CRC16_H_ */

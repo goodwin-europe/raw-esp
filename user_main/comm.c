@@ -84,7 +84,7 @@ encoder_finalize(struct encoder *e)
 		return FALSE;
 	}
 
-	uint16_t crc = crc16_ccitt_block(e->buf, e->idx);
+	uint16_t crc = crc16_block(e->buf, e->idx);
 	encoder_put_data(e, &crc, sizeof(crc)); /* Caution: assule LE here */
 
 	ssize_t final_size = cobs_encode(e->buf, e->idx, sizeof(e->buf));
@@ -151,7 +151,7 @@ decoder_check_and_dispatch_cb(void *decoder, uint8_t *data, size_t len)
 		return;
 	}
 
-	crc_calc = crc16_ccitt_block(data, len - 2);
+	crc_calc = crc16_block(data, len - 2);
 	memcpy(&crc_msg, data + len - 2, 2);
 	if (crc_calc != crc_msg) {
 		dec->crc_errors++;
