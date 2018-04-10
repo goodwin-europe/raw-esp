@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <string.h>
 #include "cobs.h"
 
@@ -55,48 +56,42 @@ void cobs_decoder_init(struct cobs_decoder *cobs, uint8_t *buf, size_t buf_size,
 /* FIXME: check logic if cnt = 0xff */
 void cobs_decoder_put(struct cobs_decoder *cobs, uint8_t const *src, size_t len)
 {
-  while (len--)
-  {
-    uint16_t ch;
+	while (len--) {
+		uint16_t ch;
 
-    ch = *src++;
+		ch = *src++;
 
-    switch (cobs->state)
-    {
-      case DEC_IDLE:
-        if (ch != COBS_BYTE_EOF)
-        {
-          cobs->buf_ind = 0;
-          cobs->block_cnt = cobs->block_len = ch;
-          cobs->state = DEC_BLOCK;
-        }
-      break;
+		switch (cobs->state) {
+		case DEC_IDLE:
+			if (ch != COBS_BYTE_EOF) {
+				cobs->buf_ind = 0;
+				cobs->overflow = 0;
+				cobs->block_cnt = cobs->block_len = ch;
+				cobs->state = DEC_BLOCK;
+			}
+			break;
 
-      case DEC_BLOCK:
-        if (ch != COBS_BYTE_EOF)
-        {
-          if (cobs->block_cnt == 1)
-          {
-            if (cobs->block_len < 0xFF)
-              if (cobs->buf_ind < cobs->buf_size)
-                cobs->buf[cobs->buf_ind++] = COBS_BYTE_EOF;
-            cobs->block_cnt = cobs->block_len = ch;
-          }
-          else
-          {
-            cobs->block_cnt--;
-            if (cobs->buf_ind < cobs->buf_size)
-              cobs->buf[cobs->buf_ind++] = ch;
-          }
-        }
-        else
-        {
-          if (cobs->block_cnt == 1)
-            cobs->cb(cobs->cb_data, cobs->buf, cobs->buf_ind);
-          cobs->buf_ind = 0;
-          cobs->state = DEC_IDLE;
-        }
-      break;
-    }
-  }
+		case DEC_BLOCK:
+			if (ch != COBS_BYTE_EOF) {
+				if ((cobs->block_cnt == 1) && (cobs->block_len < 0xFF)) {
+					cobs->buf[cobs->buf_ind++] = COBS_BYTE_EOF;
+					cobs->block_cnt = cobs->block_len = ch;
+				} else if ((cobs->block_cnt == 1) && (cobs->block_len == 0xff)) {
+					cobs->block_cnt = cobs->block_len = ch;
+				} else {
+					cobs->block_cnt--;
+					if (cobs->buf_ind < cobs->buf_size)
+						cobs->buf[cobs->buf_ind++] = ch;
+					else
+						cobs->overflow = 1; // TODO: report error?
+				}
+			} else {
+				if ((cobs->block_cnt == 1) && (cobs->overflow == 0))
+					cobs->cb(cobs->cb_data, cobs->buf, cobs->buf_ind);
+				cobs->buf_ind = 0;
+				cobs->state = DEC_IDLE;
+			}
+			break;
+		}
+	}
 }

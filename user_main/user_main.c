@@ -39,6 +39,7 @@ user_rf_cal_sector_set(void)
 {
     enum flash_size_map size_map = system_get_flash_size_map();
     uint32 rf_cal_sec = 0;
+    return 128 - 5;
 
     switch (size_map) {
         case FLASH_SIZE_4M_MAP_256_256:
