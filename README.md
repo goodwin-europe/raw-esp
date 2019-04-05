@@ -34,8 +34,6 @@ interface.
    Following command is suitable for versions with 4MB flash:
    `esptool.py --port /dev/ttyUSB0 --baud 460800 write_flash --flash_size=detect 0 0x00000.bin 0x10000 0x10000.bin 0x3fc000 esp_sdk/bin/esp_init_data_default_v08.bin`
 
-Prebuilt firmware is also provided in `bin` dir.
-
 ## Host interface
 
 Host interface is documented in `user_main/message.h`.
