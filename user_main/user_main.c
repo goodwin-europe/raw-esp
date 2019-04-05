@@ -31,41 +31,34 @@ os_event_t *taskQueue;
 static uint8_t forward_ip_broadcasts = 1;
 static enum forwarding_mode global_forwarding_mode = FORWARDING_MODE_NONE;
 
-void user_rf_pre_init() {
-}
 
-uint32 ICACHE_FLASH_ATTR
-user_rf_cal_sector_set(void)
+void ICACHE_FLASH_ATTR user_pre_init(void)
 {
-    enum flash_size_map size_map = system_get_flash_size_map();
-    uint32 rf_cal_sec = 0;
-    return 128 - 5;
+	bool rc = false;
+	  static const partition_item_t part_table[] =
+		  {
+		   {SYSTEM_PARTITION_RF_CAL,
+		    0x3fb000,
+		    0x1000},
+		   {SYSTEM_PARTITION_PHY_DATA,
+		    0x3fc000,
+		    0x1000},
+		   {SYSTEM_PARTITION_SYSTEM_PARAMETER,
+		    0x3fd000,
+		    0x3000},
+		  };
 
-    switch (size_map) {
-        case FLASH_SIZE_4M_MAP_256_256:
-            rf_cal_sec = 128 - 5;
-            break;
+	  // This isn't an ideal approach but there's not much point moving on unless
+	  // or until this has succeeded cos otherwise the SDK will just barf and
+	  // refuse to call user_init()
+	  while (!rc)
+	  {
+		  rc = system_partition_table_regist(part_table,
+		                                     sizeof(part_table)/sizeof(part_table[0]),
+		                                     4);
+	  }
 
-        case FLASH_SIZE_8M_MAP_512_512:
-            rf_cal_sec = 256 - 5;
-            break;
-
-        case FLASH_SIZE_16M_MAP_512_512:
-        case FLASH_SIZE_16M_MAP_1024_1024:
-            rf_cal_sec = 512 - 5;
-            break;
-
-        case FLASH_SIZE_32M_MAP_512_512:
-        case FLASH_SIZE_32M_MAP_1024_1024:
-            rf_cal_sec = 1024 - 5;
-            break;
-
-        default:
-            rf_cal_sec = 0;
-            break;
-    }
-
-    return rf_cal_sec;
+	  return;
 }
 
 /* void ICACHE_FLASH_ATTR dhcps_start(struct ip_info *info) { */
