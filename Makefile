@@ -18,19 +18,7 @@ FW_VERSION      = \"$(shell git describe --long --always --tags --dirty)\"
 BUILD_BASE	= build
 FW_BASE		= firmware
 
-# base directory of the ESP8266 SDK package, absolute
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v0.9.5# stable
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.0.1# stable
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.1.0# stable
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.1.1# works with liblwip_536
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.2.0
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.3.0
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.4.0
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.5.3p1# ip forwarding works
-SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.5.4
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v1.5.4.1# ?
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v2.0.0
-# SDK_BASE	?= /home/butler/esp/esp_iot_sdk_v2.0.0p1
+SDK_BASE	?="$(shell pwd)/esp_sdk"
 
 # esptool.py path and port
 ESPTOOL		?= esptool.py
@@ -39,18 +27,13 @@ ESPPORT		?= /dev/ttyUSB0
 # name for the target project
 TARGET		= raw_ip
 
-
 # which modules (subdirectories) of the project to include in compiling
 MODULES		= user_main driver # lwip/api lwip/core lwip/core/ipv4 lwip/netif
 EXTRA_INCDIR    = include
 
 # libraries used in this project, mainly provided by the SDK
-# LIBS		= c gcc hal pp phy net80211 wpa main lwip
-# LIBS		= c gcc hal pp phy net80211 wpa main lwip_536
 LIBS		= c gcc hal pp phy net80211 wpa main lwip crypto
 
-# compiler flags using during compilation of source files
-# CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Werror=implicit-function-declaration -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
 CFLAGS = -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL \
     -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals \
     -D__ets__ -DICACHE_FLASH -DLWIP_OPEN_SRC -DFW_VERSION=$(FW_VERSION)
