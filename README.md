@@ -31,7 +31,8 @@ interface.
 2. Clone this repo: `git clone --recurse-submodules https://gitlab.com/goodwin-europe/raw-esp`
 3. Run make: `make`. Firmware will be placed in `firmware/`.
 4. Flash your esp8266 with [esptool](https://github.com/espressif/esptool).
-   Following command is suitable for versions with 4MB flash:
+   Following command is suitable for versions with 4MB flash. For other sizes
+   see answer at [stackoverflow](https://arduino.stackexchange.com/questions/33590/endless-loop-on-boot-after-reflashing-esp-12e-with-at-firmware/33591)
    `esptool.py --port /dev/ttyUSB0 --baud 460800 write_flash --flash_size=detect 0 0x00000.bin 0x10000 0x10000.bin 0x3fc000 esp_sdk/bin/esp_init_data_default_v08.bin`
 
 ## Host interface
