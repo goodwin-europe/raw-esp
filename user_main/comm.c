@@ -10,6 +10,8 @@
 #include "c_types.h"
 #include "driver/uart.h"
 #include "ets_sys.h"
+#include "user_interface.h"
+#include "mem.h"
 //#include "missing_declarations.h"
 
 #include "comm.h"
@@ -181,17 +183,12 @@ decoder_put_data(struct decoder *dec, void *data, size_t len)
 }
 
 
-void uart0_rx_intr_handler(void *para)
+static inline void ICACHE_FLASH_ATTR
+do_rx()
 {
 	uint8_t buf[64];
 	uint32_t i, n;
 	uint8 c;
-
-	if (UART_RXFIFO_FULL_INT_ST !=
-		(READ_PERI_REG(UART_INT_ST(UART0)) & UART_RXFIFO_FULL_INT_ST)) {
-		return;
-	}
-	WRITE_PERI_REG(UART_INT_CLR(UART0), UART_RXFIFO_FULL_INT_CLR);
 
 	while (1) {
 		n = READ_PERI_REG(UART_STATUS(UART0)) &
@@ -205,6 +202,36 @@ void uart0_rx_intr_handler(void *para)
 		}
 		decoder_put_data(&dec_uart0, buf, n);
 	}
+
+	uart0_rx_intr_enable();
+}
+
+static inline void ICACHE_FLASH_ATTR
+do_tx()
+{
+	// TODO: implement
+}
+
+static inline void ICACHE_FLASH_ATTR
+comm_task(os_event_t *e)
+{
+	switch (e->sig) {
+	case DO_RX: do_rx(); break;
+	case DO_TX: do_tx(); break;
+	default: COMM_ERR("unknown task variant");
+	}
+}
+
+// FIXME name. Actually it handles all uart events, not only rx.
+void uart0_rx_intr_handler(void *para)
+{
+	if (UART_RXFIFO_FULL_INT_ST !=
+		(READ_PERI_REG(UART_INT_ST(UART0)) & UART_RXFIFO_FULL_INT_ST)) {
+		return;
+	}
+	uart0_rx_intr_disable();
+	WRITE_PERI_REG(UART_INT_CLR(UART0), UART_RXFIFO_FULL_INT_CLR);
+	system_os_post(COMM_PRIO, DO_RX, 0);
 }
 
 /* ------------------------------------------------------------------ misc */
@@ -222,9 +249,16 @@ comm_get_stats(uint32_t *rx_errors, uint32_t *rx_crc_errors) {
 	*rx_crc_errors = dec_uart0.crc_errors;
 }
 
+/* os_event_t comm_queue[2]; */
+
 void ICACHE_FLASH_ATTR
 comm_init(comm_callback_t cb) {
 	encoder_init(&enc_uart0);
 	decoder_init(&dec_uart0, cb);
+
+	os_event_t *comm_queue = (void *)os_malloc(sizeof(os_event_t) * 2);
+	system_os_task(comm_task, COMM_PRIO, comm_queue, 2);//ARRAY_SIZE(comm_queue));
+	// init enables rx interrupt
+	uart_init(BIT_RATE_115200, BIT_RATE_115200);
 	uart_tx_one_char(UART0, COBS_BYTE_EOF);
 }

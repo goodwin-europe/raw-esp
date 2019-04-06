@@ -98,5 +98,24 @@ void uart0_putc(const char c);
 void uart0_tx_buffer(uint8 *buf, uint16 len);
 void uart_setup(uint8 uart_no);
 STATUS uart_tx_one_char(uint8 uart, uint8 TxChar);
-#endif
 
+static void uart0_rx_intr_enable()
+{
+    SET_PERI_REG_MASK(UART_INT_ENA(0), UART_RXFIFO_FULL_INT_ENA);
+}
+
+static void uart0_rx_intr_disable()
+{
+    CLEAR_PERI_REG_MASK(UART_INT_ENA(0), UART_RXFIFO_FULL_INT_ENA);
+}
+
+static void uart0_tx_intr_enable()
+{
+    SET_PERI_REG_MASK(UART_INT_ENA(0), UART_TXFIFO_EMPTY_INT_ENA);
+}
+
+static void uart0_tx_intr_disable()
+{
+    CLEAR_PERI_REG_MASK(UART_INT_ENA(0), UART_TXFIFO_EMPTY_INT_ENA);
+}
+#endif
