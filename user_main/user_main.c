@@ -27,6 +27,7 @@ os_event_t *taskQueue;
 
 #define UART0   0
 #define UART1   1
+#define MAX_PACKET_SIZE 1600
 
 static uint8_t forward_ip_broadcasts = 1;
 static enum forwarding_mode global_forwarding_mode = FORWARDING_MODE_NONE;
@@ -61,41 +62,19 @@ void ICACHE_FLASH_ATTR user_pre_init(void)
 	  return;
 }
 
-/* void ICACHE_FLASH_ATTR dhcps_start(struct ip_info *info) { */
-/* } */
-/* void ICACHE_FLASH_ATTR dhcps_stop(void) { */
-/* } */
-/* void ICACHE_FLASH_ATTR dhcps_coarse_tmr(void) { */
-/* } */
-/* void ICACHE_FLASH_ATTR espconn_init(void) { */
-/* } */
-
-/* void task_lua(os_event_t *e){ */
-/* 	COMM_DBG("task: Heap size::%d.\n", system_get_free_heap_size()); */
-/* 	asm("WAITI 0"); // power consumption doesn't change */
-/* 	/\* os_delay_us(1*1000);   // delay 50ms before init uart *\/ */
-/* 	system_os_post(USER_TASK_PRIO_0, SIG_LUA, 's'); */
-/* } */
-
-/* void task_init(void){ */
-/* 	taskQueue = (os_event_t *)os_malloc(sizeof(os_event_t) * TASK_QUEUE_LEN); */
-/* 	system_os_task(task_lua, USER_TASK_PRIO_0, taskQueue, TASK_QUEUE_LEN); */
-/* 	system_os_post(USER_TASK_PRIO_0, SIG_LUA, 's'); */
-/* } */
 
 static u8_t ICACHE_FLASH_ATTR
-raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *addr)
+raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p, ip_addr_t *addr)
 {
 	struct ip_hdr hdr;
-	struct pbuf *p;
 
-	COMM_DBG("WLan IP packet of size %d", p0->tot_len);
+	COMM_DBG("WLan IP packet of size %d", p->tot_len);
 	if (global_forwarding_mode != FORWARDING_MODE_IP)
 		return 0;
 
-	if (pbuf_copy_partial(p0, &hdr, sizeof(hdr), 0) != sizeof(hdr)) {
+	if (pbuf_copy_partial(p, &hdr, sizeof(hdr), 0) != sizeof(hdr)) {
 		COMM_WARN("WLan packet of size %d has incomplete header",
-			  p0->tot_len);
+			  p->tot_len);
 		return 0;
 	}
 
@@ -107,7 +86,7 @@ raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *addr)
 	if ((hdr._proto == IP_PROTO_UDP)) {
 		int offset = 4 * IPH_HL(&hdr);
 		struct udp_hdr udp_h;
-		if (!pbuf_copy_partial(p0, &udp_h, sizeof(udp_h), offset)) {
+		if (!pbuf_copy_partial(p, &udp_h, sizeof(udp_h), offset)) {
 			COMM_WARN("Can't copy UDP header from WLan packet");
 			return 0;
 		}
@@ -119,13 +98,20 @@ raw_receiver(void *arg, struct raw_pcb *pcb, struct pbuf *p0, ip_addr_t *addr)
 		}
 	}
 
-	comm_send_begin(MSG_IP_PACKET);
-	for(p = p0; p; p = p->next) {
-		comm_send_data(p->payload, p->len);
+	if (p->next) {
+		// it's possible to handle this case but I've not seen it yet
+		COMM_ERR("internal error: got scattered packet");
+	} else {
+		if (p->len > MAX_PACKET_SIZE) {
+			COMM_WARN("IP packet too large: %d", (int) p->len);
+		} else {
+			// TCP ACKs should be 48 bytes
+			size_t prio = (p->len < 48 + 20) ? COMM_TX_PRIO_MEDIUM : COMM_TX_PRIO_LOW;
+			comm_send(MSG_IP_PACKET, p->payload, p->len, prio);
+		}
 	}
-	comm_send_end();
 
-	pbuf_free(p0);
+	pbuf_free(p);
 	return 1;
 	/* return 0; // not processed */
 }
@@ -143,7 +129,8 @@ init_wlan() {
 	struct ip_info ip;
 
 	wifi_set_phy_mode(PHY_MODE_11N);
-	wifi_set_sleep_type(LIGHT_SLEEP_T);
+	wifi_set_sleep_type(NONE_SLEEP_T);
+	/* wifi_set_sleep_type(LIGHT_SLEEP_T); */
 	/* wifi_set_opmode(STATION_MODE); */
 
 	/* os_sprintf((char *)&config.ssid, "g2test"); */
@@ -179,17 +166,21 @@ init_wlan() {
 static err_t netif_input_mitm(struct pbuf *p, struct netif *netif)
 {
 	COMM_DBG("mitm input, size=%d", (int)p->tot_len);
-	/* COMM_DBG("**** mitm input, size=%d, %p", */
-	/* 	 p->tot_len, netif_input_orig); */
 
 	if (global_forwarding_mode == FORWARDING_MODE_ETHER) {
-		struct pbuf *tmp;
-		comm_send_begin(MSG_ETHER_PACKET);
-		for(tmp = p; tmp; tmp = tmp->next) {
-			comm_send_data(tmp->payload, tmp->len);
+		if (p->next) {
+			// it's possible to handle this case but I've not seen it yet
+			COMM_ERR("internal error: got scattered packet");
+		} else {
+			if (p->len > MAX_PACKET_SIZE) {
+				COMM_WARN("IP packet too large: %d", (int) p->len);
+			} else {
+				// TCP ACKs should be around 68 bytes with eth header
+				size_t prio = (p->len < 68 + 20) ?
+					COMM_TX_PRIO_MEDIUM : COMM_TX_PRIO_LOW;
+				comm_send(MSG_ETHER_PACKET, p->payload, p->len, prio);
+			}
 		}
-		comm_send_end();
-
 		pbuf_free(p);
 		return 0;
 	} else {
@@ -375,9 +366,7 @@ scan_done(void *arg, STATUS status)
 			bss_iter = bss_iter->next.stqe_next;
 		}
 	}
-	comm_send_begin(MSG_WIFI_SCAN_REPLY);
-	comm_send_data((void *) &r, sizeof(r));
-	comm_send_end();
+	comm_send_ctl(MSG_WIFI_SCAN_REPLY, &r, sizeof(r));
 	if (r.status) {
 		COMM_ERR("Scan failed");
 		return;
@@ -397,9 +386,7 @@ scan_done(void *arg, STATUS status)
 		e.is_hidden = bss_iter->is_hidden;
 		bss_iter = bss_iter->next.stqe_next;
 
-		comm_send_begin(MSG_WIFI_SCAN_ENTRY);
-		comm_send_data((void *) &e, sizeof(e));
-		comm_send_end();
+		comm_send_ctl(MSG_WIFI_SCAN_ENTRY, (void *) &e, sizeof(e));
 	}
 }
 
@@ -510,9 +497,7 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		for (i = 0; i < ARRAY_SIZE(conf.dns); i++) {
 			conf.dns[i] = dns_getserver(i);
 		}
-		comm_send_begin(MSG_STATION_IP_CONF_REPLY);
-		comm_send_data((void *)&conf, sizeof(conf));
-		comm_send_end();
+		comm_send_ctl(MSG_STATION_IP_CONF_REPLY, (void *)&conf, sizeof(conf));
 		break;
 	}
 	case MSG_STATION_CONF_SET: {
@@ -596,9 +581,7 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		uint8_t mac[6];
 		/* TODO: add support for getting AP mac ? */
 		TRY(!wifi_get_macaddr(STATION_IF, mac), "Failed to get mac address");
-		comm_send_begin(MSG_WIFI_GET_MACADDR_REPLY);
-		comm_send_data(mac, sizeof(mac));
-		comm_send_end();
+		comm_send_ctl(MSG_WIFI_GET_MACADDR_REPLY, mac, sizeof(mac));
 		break;
 	}
 	case MSG_STATION_CONN_STATUS_REQUEST: {
@@ -619,18 +602,14 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		default:
 			out = 0xff; break;
 		}
-		comm_send_begin(MSG_STATION_CONN_STATUS_REPLY);
-		comm_send_u8(out);
-		comm_send_end();
+		comm_send_ctl(MSG_STATION_CONN_STATUS_REPLY, &out, sizeof(out));
 		break;
 	}
 	case MSG_STATION_RSSI_REQUEST: {
 		int8_t rssi = wifi_station_get_rssi();
 		if (rssi == 31)
 			FAIL("wifi_station_get_rssi() returned '31'");
-		comm_send_begin(MSG_STATION_RSSI_REPLY);
-		comm_send_u8((uint8_t)rssi);
-		comm_send_end();
+		comm_send_ctl(MSG_STATION_RSSI_REPLY, &rssi, sizeof(rssi));
 		break;
 	}
 	case MSG_FORWARD_IP_BROADCASTS: {
@@ -730,16 +709,15 @@ packet_from_host(uint8_t type, uint8_t *data, uint32_t n)
 		break;
 	}
 	case MSG_PRINT_STATS: {
-		uint32_t rx_errors, crc_errors;
-		comm_get_stats(&rx_errors, &crc_errors);
-		COMM_INFO("HEAP free: %d, rx_err: %d, crc_err: %d",
-			  system_get_free_heap_size(), rx_errors, crc_errors);
+		uint32_t rx_errors, crc_errors, dropped_packets;
+		comm_get_stats(&rx_errors, &crc_errors, &dropped_packets);
+		COMM_INFO("HEAP free: %d, rx_err: %d, crc_err: %d, dropped: %d",
+		          system_get_free_heap_size(),
+		          (int)rx_errors, (int)crc_errors, (int)dropped_packets);
 		break;
 	}
 	case MSG_ECHO_REQUEST:
-		comm_send_begin(MSG_ECHO_REPLY);
-		comm_send_data(data, n);
-		comm_send_end();
+		comm_send_ctl(MSG_ECHO_REPLY, data, n);
 		break;
 	case MSG_SET_BAUD: {
 		uint32_t *baud = (void *) data;
@@ -765,8 +743,7 @@ user_init(void)
 	uart_init(BIT_RATE_115200, BIT_RATE_115200);
 	comm_init(packet_from_host);
 
-	comm_send_begin(MSG_BOOT);
-	comm_send_end();
+	comm_send_ctl(MSG_BOOT, NULL, 0);
 
 	/* lwip_init(); */
 

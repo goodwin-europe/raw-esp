@@ -2,44 +2,53 @@
 #include <string.h>
 #include "cobs.h"
 
-ssize_t cobs_encode(uint8_t *data, size_t len, size_t buffer_size)
+
+size_t cobs_encode(uint8_t *dst_orig, uint8_t *src_orig, size_t src_len)
 {
-	size_t max_encoded_len = COBS_ENCODED_SIZE(len);
-	if (buffer_size < max_encoded_len)
-		return -1;
+	uint8_t *dst, *code_ptr, *code_end, code_len;
+	uint8_t const *src;
+	size_t dest_sz = COBS_ENCODED_MAX_SIZE(src_len);
 
-	size_t max_overhead = max_encoded_len - len;
-	uint8_t *src = data + max_overhead;
-	uint8_t *marker = data;
-	uint8_t *dst = data + 1;
+	dst = dst_orig;
+	src = src_orig;
 
-	memmove(src, data, len);
+	code_end = dst + dest_sz - 1; // EOF reservation
+	code_ptr = dst++;
+	code_len = 0x01;
 
-	/* It's possible to keep `distance` directly in `*marker`, but I'm not
-           sure that compiler will figure out aliasing */
-	size_t distance = 1;
-	while (src != data + max_overhead + len) {
-		if (distance > COBS_MAX_DISTANCE) {
-			*marker = distance;
-			marker = dst;
-			dst++;
-			distance = 1;
+	while (src_len--)
+	{
+		uint8_t ch = *src++;
+
+		if (dst >= code_end)
+			return -1;
+
+		if (ch == COBS_BYTE_EOF)
+		{
+			*code_ptr = code_len;
+			code_ptr = dst++;
+			code_len = 0x01;
 		}
+		else
+		{
+			*dst++ = ch;
+			code_len++;
+			if (code_len == 0xFF)
+			{
+				if (src_len == 0)
+					break;
 
-		if (*src == COBS_BYTE_EOF) {
-			*marker = distance;
-			marker = dst;
-			distance = 1;
-		} else {
-			*dst = *src;
-			distance++;
+				*code_ptr = code_len;
+				code_ptr = dst++;
+				code_len = 0x01;
+			}
 		}
-		src++;
-		dst++;
 	}
-	*marker = distance;
+
+	*code_ptr = code_len;
 	*dst++ = COBS_BYTE_EOF;
-	return dst - data;
+
+	return dst - dst_orig;
 }
 
 

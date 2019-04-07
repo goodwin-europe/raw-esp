@@ -7,12 +7,10 @@
 
 #define COBS_MAX_DISTANCE (0xff - 1)
 #define COBS_BYTE_EOF               0
-/* Zero marker at the head, actual data, terminating zero, and extra marker
-   for every 0xFD bytes */
-#define COBS_ENCODED_SIZE(size) (1 + (size) + 1 + \
-				 ((size + COBS_MAX_DISTANCE - 1) / (COBS_MAX_DISTANCE)) - 1)
 
-ssize_t cobs_encode(uint8_t *, size_t, size_t);
+#define COBS_ENCODED_MAX_SIZE(size) ((size) + (((size) + COBS_MAX_DISTANCE - 1) / COBS_MAX_DISTANCE) + 1)
+
+size_t cobs_encode(uint8_t *, uint8_t *, size_t);
 
 
 enum cobs_decoder_state

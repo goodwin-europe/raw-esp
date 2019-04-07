@@ -101,12 +101,14 @@ STATUS uart_tx_one_char(uint8 uart, uint8 TxChar);
 
 static void uart0_rx_intr_enable()
 {
-    SET_PERI_REG_MASK(UART_INT_ENA(0), UART_RXFIFO_FULL_INT_ENA);
+    SET_PERI_REG_MASK(UART_INT_ENA(0),
+                      UART_RXFIFO_FULL_INT_ENA | UART_RXFIFO_TOUT_INT_ENA);
 }
 
 static void uart0_rx_intr_disable()
 {
-    CLEAR_PERI_REG_MASK(UART_INT_ENA(0), UART_RXFIFO_FULL_INT_ENA);
+    CLEAR_PERI_REG_MASK(UART_INT_ENA(0),
+                        UART_RXFIFO_FULL_INT_ENA | UART_RXFIFO_TOUT_INT_ENA);
 }
 
 static void uart0_tx_intr_enable()
